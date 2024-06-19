@@ -587,6 +587,7 @@ bool Arch::xc7_logic_tile_valid(IdString tileType, LogicTileStatus &lts) const
 bool Arch::isBelLocationValid(BelId bel) const
 {
     IdString belTileType = getBelTileType(bel);
+    IdString belType = getBelType(bel);
     if (isLogicTile(bel)) {
         // Logic Tile
         if (!tileStatus[bel.tile].lts)
@@ -619,6 +620,13 @@ bool Arch::isBelLocationValid(BelId bel) const
                     DBG();
                     return false;
                 }
+        }
+    } else if (belTileType == id("CFG_CENTER_MID") && belType == id_BSCAN) {
+        Loc loc = getSiteLocInTile(bel);
+        CellInfo *ci = getBoundBelCell(bel);
+        if (ci != nullptr) {
+            auto jtag_chain = ci->params[id("JTAG_CHAIN")].as_int64();
+            return loc.y == (jtag_chain - 1);
         }
     } else {
         for (auto bel : getBelsByTile(bel.tile % chip_info->width, bel.tile / chip_info->width))
