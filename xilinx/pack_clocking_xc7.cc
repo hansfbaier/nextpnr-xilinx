@@ -39,6 +39,23 @@ void XC7Packer::prepare_clocking()
     std::unordered_map<IdString, IdString> upgrade;
     upgrade[ctx->id("MMCME2_BASE")] = ctx->id("MMCME2_ADV");
     upgrade[ctx->id("PLLE2_BASE")] = ctx->id("PLLE2_ADV");
+    // Set the configuration rules of BUFGMUX. BUFGMUX and BUFGMUX_1 and
+    // apply all the configuration information of the S port to CE0 and CE1
+    std::unordered_map<IdString, XFormRule> bufgctrl_rules;
+    bufgctrl_rules[ctx->id("BUFGMUX")].new_type = ctx->id("BUFGCTRL");
+    bufgctrl_rules[ctx->id("BUFGMUX")].port_multixform[ctx->id("S")] = {ctx->id("CE0"),ctx->id("CE1")};
+    bufgctrl_rules[ctx->id("BUFGMUX_1")] = bufgctrl_rules[ctx->id("BUFGMUX")];
+
+    bufgctrl_rules[ctx->id("BUFGMUX_CTRL")].new_type = ctx->id("BUFGCTRL");
+    bufgctrl_rules[ctx->id("BUFGMUX_CTRL")].port_multixform[ctx->id("S")] = {ctx->id("S0"),ctx->id("S1")};
+
+    bufgctrl_rules[ctx->id("BUFGCE")].new_type = ctx->id("BUFGCTRL");
+    bufgctrl_rules[ctx->id("BUFGCE")].port_xform[ctx->id("I")] = ctx->id("I0");
+    bufgctrl_rules[ctx->id("BUFGCE")].port_xform[ctx->id("CE")] = ctx->id("CE0");
+    bufgctrl_rules[ctx->id("BUFGCE_1")] = bufgctrl_rules[ctx->id("BUFGCE")];
+
+    bufgctrl_rules[ctx->id("BUFG")].new_type = ctx->id("BUFGCTRL");
+    bufgctrl_rules[ctx->id("BUFG")].port_xform[ctx->id("I")] = ctx->id("I0");
 
     for (auto cell : sorted(ctx->cells)) {
         CellInfo *ci = cell.second;
@@ -46,24 +63,90 @@ void XC7Packer::prepare_clocking()
             IdString new_type = upgrade.at(ci->type);
             ci->type = new_type;
         } else if (ci->type == ctx->id("BUFG")) {
-            ci->type = ctx->id("BUFGCTRL");
-            rename_port(ctx, ci, ctx->id("I"), ctx->id("I0"));
             tie_port(ci, "CE0", true, true);
             tie_port(ci, "S0", true, true);
             tie_port(ci, "S1", false, true);
             tie_port(ci, "IGNORE0", true, true);
-        } else if (ci->type == ctx->id("BUFGCE")) {
-            ci->type = ctx->id("BUFGCTRL");
-            rename_port(ctx, ci, ctx->id("I"), ctx->id("I0"));
-            rename_port(ctx, ci, ctx->id("CE"), ctx->id("CE0"));
+        } else if (ci->type == ctx->id("BUFGCE") || ci->type == ctx->id("BUFGCE_1")) {
+            fold_inverter(ci,"CE");
+            int inverter = int_or_default(ci->params,ctx->id("IS_CE_INVERTED"));
+            if (inverter)
+            {
+                ci->params[ctx->id("IS_CE0_INVERTED")] = Property(1);
+                ci->params.erase(ctx->id("IS_CE_INVERTED"));
+            }
             tie_port(ci, "S0", true, true);
             tie_port(ci, "S1", false, true);
             tie_port(ci, "IGNORE0", true, true);
+            tie_port(ci, "IGNORE1", false, true);
         } else if (ci->type == id_BUFH || ci->type == id_BUFHCE) {
             ci->type = id_BUFHCE_BUFHCE;
             tie_port(ci, "CE", true, true);
+        } else if (ci->type == ctx->id("BUFGMUX") || ci->type == ctx->id("BUFGMUX_1")) {
+            // insert inverter before the destination port
+            fold_inverter(ci,"S");
+            int inverter = int_or_default(ci->params,ctx->id("IS_S_INVERTED"));
+            if (inverter)
+            {
+                ci->params[ctx->id("IS_CE0_INVERTED")] = Property(0);
+                ci->params[ctx->id("IS_CE1_INVERTED")] = Property(1);
+                ci->params.erase(ctx->id("IS_S_INVERTED"));
+            } else {
+                ci->params[ctx->id("IS_CE0_INVERTED")] = Property(1);
+                ci->params[ctx->id("IS_CE1_INVERTED")] = Property(0);
+            }
+
+            std::string sel_type = str_or_default(ci->params, ctx->id("CLK_SEL_TYPE"), "SYNC");
+            if (sel_type == "ASYNC") {
+                tie_port(ci, "S0", true, true);
+                tie_port(ci, "S1", true, true);
+                tie_port(ci, "IGNORE0", false, true);
+                tie_port(ci, "IGNORE1", false, true);
+            } else if (sel_type == "SYNC") {
+                /*These settings ensure that BUFGCTRL behaves like BUFGMUX:
+                    1. S0 and S1 are set high so that CE0 and CE1 control input selection.
+                    2. IGNORE0 and IGNORE1 are set high, and the internal default is inverted,
+                       so no inversion is required.
+                */
+                tie_port(ci, "S0", true, true);
+                tie_port(ci, "S1", true, true);
+                tie_port(ci, "IGNORE0", true, false);
+                tie_port(ci, "IGNORE1", true, false);
+            }
+
+        } else if (ci->type == ctx->id("BUFGMUX_CTRL")) {
+            // Inverter before the absorption port
+            fold_inverter(ci, "S");
+            for (auto& it : ci->params)
+            {
+                std::string str = it.first.c_str(ctx);
+            }
+            int inverter = int_or_default(ci->params,ctx->id("IS_S_INVERTED"));
+            if (inverter)
+            {
+                ci->params[ctx->id("IS_S0_INVERTED")] = Property(0);
+                ci->params[ctx->id("IS_S1_INVERTED")] = Property(1);
+                ci->params.erase(ctx->id("IS_S_INVERTED"));
+            } else {
+                ci->params[ctx->id("IS_S0_INVERTED")] = Property(1);
+                ci->params[ctx->id("IS_S1_INVERTED")] = Property(0);
+            }
+
+            xform_cell(bufgctrl_rules, ci);
+            /* These settings ensure that BUFGCTRL behaves like BUFGMUX_CTRL:
+                1. CE0 and CE1 are set high so that S0 and S1 control input selection.
+                2. IGNORE0 and IGNORE1 are set high, and the internal inversion is the default
+                   so no inversion is needed.
+            */
+            tie_port(ci, "CE0", true, true);
+            tie_port(ci, "CE1", true, true);
+            // configure IGNORE0 and IGNORE1, keep high level,
+            // do not enter "IS_IGNOREX_INVERTED" to indicate inversion
+            tie_port(ci, "IGNORE0", true, false);
+            tie_port(ci, "IGNORE1", true, false);
         }
     }
+    generic_xform(bufgctrl_rules);
 }
 
 void XC7Packer::pack_plls()

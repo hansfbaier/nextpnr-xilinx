@@ -41,11 +41,27 @@ std::unique_ptr<CellInfo> create_cell(Context *ctx, IdString type, IdString name
         add_port("I", PORT_IN);
         add_port("WE", PORT_IN);
         add_port("O", PORT_OUT);
+    } else if (type == ctx->id("RAMS64E")) {
+        for (int i = 0; i < 6; i++)
+            add_port("ADR" + std::to_string(i), PORT_IN);
+        for (int i = 6; i < 8; i++)
+            add_port("WADR" + std::to_string(i), PORT_IN);
+        add_port("CLK", PORT_IN);
+        add_port("I", PORT_IN);
+        add_port("WE", PORT_IN);
+        add_port("O", PORT_OUT);
     } else if (type == ctx->id("RAMD32")) {
         for (int i = 0; i < 5; i++)
             add_port("RADR" + std::to_string(i), PORT_IN);
         for (int i = 0; i < 5; i++)
             add_port("WADR" + std::to_string(i), PORT_IN);
+        add_port("CLK", PORT_IN);
+        add_port("I", PORT_IN);
+        add_port("WE", PORT_IN);
+        add_port("O", PORT_OUT);
+    } else if (type == ctx->id("RAMS32")) {
+        for (int i = 0; i < 5; i++)
+            add_port("ADR" + std::to_string(i), PORT_IN);
         add_port("CLK", PORT_IN);
         add_port("I", PORT_IN);
         add_port("WE", PORT_IN);
@@ -87,6 +103,10 @@ std::unique_ptr<CellInfo> create_cell(Context *ctx, IdString type, IdString name
         add_port("I", PORT_IN);
         add_port("IBUFDISABLE", PORT_IN);
         add_port("T", PORT_IN);
+        add_port("O", PORT_OUT);
+    } else if (type == ctx->id("IBUF_IBUFDISABLE")) {
+        add_port("I", PORT_IN);
+        add_port("IBUFDISABLE", PORT_IN);
         add_port("O", PORT_OUT);
     } else if (type == ctx->id("OBUF") || type == ctx->id("IBUF")) {
         add_port("I", PORT_IN);
@@ -146,11 +166,16 @@ std::unique_ptr<CellInfo> create_cell(Context *ctx, IdString type, IdString name
         add_port("I", PORT_IN);
         add_port("O", PORT_OUT);
         add_port("CE", PORT_IN);
-    } else if (type == ctx->id("IBUFDS_INTERMDISABLE_INT")) {
+    } else if (type == ctx->id("IBUFDS_INTERMDISABLE")) {
         add_port("I", PORT_IN);
         add_port("IB", PORT_IN);
         add_port("IBUFDISABLE", PORT_IN);
         add_port("INTERMDISABLE", PORT_IN);
+        add_port("O", PORT_OUT);
+    } else if (type == ctx->id("IBUFDS_IBUFDISABLE")) {
+        add_port("I", PORT_IN);
+        add_port("IB", PORT_IN);
+        add_port("IBUFDISABLE", PORT_IN);
         add_port("O", PORT_OUT);
     } else if (type == ctx->id("CARRY4")) {
         add_port("CI", PORT_IN);

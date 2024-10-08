@@ -305,8 +305,6 @@ class NextpnrTileType:
 		for s in tile.sites():
 			seen_pins = set() # set of (pinname, sitewire name)
 			for variant_idx, variant in enumerate(s.available_variants()):
-				if variant in ("FIFO36E1", ): #unsupported atm
-					continue
 				sv = s.variant(variant)
 				# Import site variant bels
 				for bel in sv.bels():

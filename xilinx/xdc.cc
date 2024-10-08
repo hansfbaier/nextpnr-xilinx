@@ -19,7 +19,26 @@
 
 #include "log.h"
 #include "nextpnr.h"
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <fstream>
+
 NEXTPNR_NAMESPACE_BEGIN
+
+// Determine whether the string is a valid 8-bit hexadecimal number
+bool is_valid_hex32(const std::string &str) {
+    std::string hex_digits = "0123456789abcdefABCDEF";
+    // Check for optional "0x" or "0X" prefix
+    assert(str.size() == 10);
+    assert((str[0] == '0' && (str[1] == 'x' || str[1] == 'X')));
+    // Check if all characters are valid hex digits
+    for (size_t i = 2; i < str.size(); ++i) {
+        if (hex_digits.find(str[i]) == std::string::npos) {
+            return false;
+        }
+    }
+    return true;
+}
 
 void Arch::parseXdc(std::istream &in)
 {
@@ -143,9 +162,31 @@ void Arch::parseXdc(std::istream &in)
             if (arguments.at(1) == "INTERNAL_VREF")
                 continue;
             if (arguments.at(3).size() > 2 && arguments.at(3) == "[current_design]") {
-                log_warning("[current_design] isn't supported, ignoring (on line %d)\n", lineno);
+                // Determine whether pair.first contains BITSTREAM.CONFIG.USR_ACCESS
+                std::string first_key = std::get<0>(arg_pairs[0]);
+                if (first_key == "BITSTREAM.CONFIG.USR_ACCESS") {
+                    std::string usr_access_parameter = std::get<1>(arg_pairs[0]);
+                    boost::to_upper(usr_access_parameter);
+                    if (usr_access_parameter == "NONE") {
+                        // nothing to do here, default to 0
+                    } else log_error("only NONE is currently implemented as a value for BITSTREAM.CONFIG.USR_ACCESS, " \
+                                     "but you used: '%s", usr_access_parameter.c_str());
+                    // TODO
+                    if (boost::starts_with(usr_access_parameter, "0X")) {
+                        bool is_valid_hex = is_valid_hex32(usr_access_parameter);
+                        if (is_valid_hex) {
+                            // TODO
+                        } else {
+                            log_error("The 8-bit hexadecimal number format is incorrect in the BITSTREAM.CONFIG.USR_ACCESS property\n");
+                            return;
+                        }
+                    } else if (usr_access_parameter == "TIMESTAMP") {
+                        // TODO
+                    } else log_error("invalid value '%s' for BITSTREAM.CONFIG.USR_ACCESS property. " \
+                                     "Must be NONE, TIMESTAMP or '0x' + 32 bit hex\n", usr_access_parameter.c_str());
+                }
                 continue;
-            }
+            } 
             std::vector<CellInfo *> dest = get_cells(arguments.at(3));
             for (auto c : dest)
                 for (const auto &pair : arg_pairs)

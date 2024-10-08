@@ -285,7 +285,7 @@ void init_python(const char *executable, bool first)
         Py_Initialize();
 
         // Add cwd to Python's search path so `import` can be used in user scripts
-        boost::filesystem::path cwd = boost::filesystem::absolute("./").normalize();
+        boost::filesystem::path cwd = boost::filesystem::absolute("./").lexically_normal();
         PyObject *sys_path = PySys_GetObject("path");
         PyList_Insert(sys_path, 0, PyUnicode_FromString(cwd.string().c_str()));
 

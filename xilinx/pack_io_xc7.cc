@@ -64,6 +64,17 @@ std::string XC7Packer::get_tilename_by_sitename(Context *ctx, std::string site)
     return std::string();
 }
 
+void XC7Packer::update_usr_ibufdisable(Context *ctx, CellInfo *inbuf) {
+    auto it = inbuf->ports.find(ctx->id("IBUFDISABLE"));
+    if (it != inbuf->ports.end()) {
+        auto& port_value = it->second;
+        if (port_value.net == nullptr || port_value.net->driver.cell->type == ctx->id("PSEUDO_GND"))
+            inbuf->params[ctx->id("USE_IBUFDISABLE")] = Property("FALSE");
+    } else {
+        return;
+    }
+}
+
 void XC7Packer::decompose_iob(CellInfo *xil_iob, bool is_hr, const std::string &iostandard)
 {
     bool is_se_ibuf = xil_iob->type == ctx->id("IBUF") || xil_iob->type == ctx->id("IBUF_IBUFDISABLE") ||
@@ -72,6 +83,13 @@ void XC7Packer::decompose_iob(CellInfo *xil_iob, bool is_hr, const std::string &
                        xil_iob->type == ctx->id("IOBUF_INTERMDISABLE");
     bool is_se_obuf = xil_iob->type == ctx->id("OBUF") || xil_iob->type == ctx->id("OBUFT");
 
+    // Determine whether the port IBUFDS_IBUFDISABLE in IOBUFDS_INTERMDISABLE is grounded. If it is grounded, set the USE_IBUFDISABLE parameter to FALSE
+    bool driver_ibufdisable_port = xil_iob->type == ctx->id("IBUF_IBUFDISABLE") || xil_iob->type == ctx->id("IBUF_INTERMDISABLE")||
+                        xil_iob->type == ctx->id("IBUFDS_DIFF_OUT_IBUFDISABLE") || xil_iob->type == ctx->id("IBUFDS_DIFF_OUT_INTERMDISABLE") ||
+                        xil_iob->type == ctx->id("IBUFDS_IBUFDISABLE") || xil_iob->type == ctx->id("IBUFDS_INTERMDISABLE") ||
+                        xil_iob->type == ctx->id("IOBUF_INTERMDISABLE") ||xil_iob->type == ctx->id("IOBUF_DCIEN") || 
+                        xil_iob->type == ctx->id("IOBUFDS_DCIEN") || xil_iob->type == ctx->id("IOBUFDS_DIFF_OUT_DCIEN") || 
+                        xil_iob->type == ctx->id("IOBUFDS_DIFF_OUT_INTERMDISABLE") || xil_iob->type == ctx->id("IOBUFDS_INTERMDISABLE");
     auto pad_site = [&](NetInfo *n) {
         for (auto user : n->users)
             if (user.cell->type == ctx->id("PAD"))
@@ -113,6 +131,11 @@ void XC7Packer::decompose_iob(CellInfo *xil_iob, bool is_hr, const std::string &
         replace_port(xil_iob, ctx->id("IBUFDISABLE"), inbuf, ctx->id("IBUFDISABLE"));
         replace_port(xil_iob, ctx->id("INTERMDISABLE"), inbuf, ctx->id("INTERMDISABLE"));
 
+        // migrate the original cell's parameters
+        inbuf->params.insert(xil_iob->params.begin(), xil_iob->params.end());
+        // Update IO primitives related to USE_IBUFDISABLE
+        if(driver_ibufdisable_port)
+            update_usr_ibufdisable(ctx, inbuf);
         if (is_se_iobuf)
             subcells.push_back(inbuf);
     }
@@ -139,8 +162,11 @@ void XC7Packer::decompose_iob(CellInfo *xil_iob, bool is_hr, const std::string &
             subcells.push_back(obuf);
     }
 
-    bool is_diff_ibuf = xil_iob->type == ctx->id("IBUFDS") || xil_iob->type == ctx->id("IBUFDS_INTERMDISABLE");
-    bool is_diff_iobuf = xil_iob->type == ctx->id("IOBUFDS") || xil_iob->type == ctx->id("IOBUFDS_DCIEN");
+    bool is_diff_ibuf = xil_iob->type == ctx->id("IBUFDS") || xil_iob->type == ctx->id("IBUFDS_INTERMDISABLE") || xil_iob->type == ctx->id("IBUFDS_IBUFDISABLE");
+    bool is_diff_iobuf = xil_iob->type == ctx->id("IOBUFDS") || xil_iob->type == ctx->id("IOBUFDS_DCIEN") || xil_iob->type == ctx->id("IOBUFDS_INTERMDISABLE");
+    bool is_diff_out_ibuf = xil_iob->type == ctx->id("IBUFDS_DIFF_OUT") ||
+                             xil_iob->type == ctx->id("IBUFDS_DIFF_OUT_IBUFDISABLE") ||
+                             xil_iob->type == ctx->id("IBUFDS_DIFF_OUT_INTERMDISABLE");
     bool is_diff_out_iobuf = xil_iob->type == ctx->id("IOBUFDS_DIFF_OUT") ||
                              xil_iob->type == ctx->id("IOBUFDS_DIFF_OUT_DCIEN") ||
                              xil_iob->type == ctx->id("IOBUFDS_DIFF_OUT_INTERMDISABLE");
@@ -167,8 +193,19 @@ void XC7Packer::decompose_iob(CellInfo *xil_iob, bool is_hr, const std::string &
         disconnect_port(ctx, xil_iob, ctx->id("O"));
 
         IdString ibuf_type = ctx->id("IBUFDS");
+        if (xil_iob->type == ctx->id("IBUFDS_IBUFDISABLE"))
+            ibuf_type = ctx->id("IBUFDS_IBUFDISABLE");
+        if (xil_iob->type == ctx->id("IBUFDS_INTERMDISABLE") || xil_iob->type == ctx->id("IOBUFDS_INTERMDISABLE"))
+            ibuf_type = ctx->id("IBUFDS_INTERMDISABLE");
         CellInfo *inbuf = insert_diffibuf(int_name(xil_iob->name, "IBUF", is_se_iobuf), ibuf_type,
                                           {pad_p_net, pad_n_net}, top_out);
+        replace_port(xil_iob, ctx->id("IBUFDISABLE"), inbuf, ctx->id("IBUFDISABLE"));
+        replace_port(xil_iob, ctx->id("INTERMDISABLE"), inbuf, ctx->id("INTERMDISABLE"));
+        // Migrate the original cell's parameter
+        inbuf->params.insert(xil_iob->params.begin(), xil_iob->params.end());
+        // Update IO primitives related to USE_IBUFDISABLE
+        if(driver_ibufdisable_port)
+            update_usr_ibufdisable(ctx, inbuf);
         if (is_riob18) {
             inbuf->attrs[ctx->id("BEL")] = site_p + "/IOB18M/INBUF_DCIEN";
             inbuf->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB18M");
@@ -211,11 +248,11 @@ void XC7Packer::decompose_iob(CellInfo *xil_iob, bool is_hr, const std::string &
         bool has_dci = xil_iob->type == ctx->id("IOBUFDS_DCIEN") || xil_iob->type == ctx->id("IOBUFDSE3");
 
         CellInfo *obuf_p = insert_obuf(int_name(xil_iob->name, is_diff_obuf ? "P" : "OBUFTDS$subcell$P"),
-                                       (is_diff_iobuf || is_diff_out_iobuf || (xil_iob->type == ctx->id("OBUFTDS")))
-                                               ? (has_dci ? ctx->id("OBUFT_DCIEN") : ctx->id("OBUFT"))
-                                               : ctx->id("OBUF"),
-                                       get_net_or_empty(xil_iob, ctx->id("I")), pad_p_net,
-                                       get_net_or_empty(xil_iob, ctx->id("T")));
+                                    (is_diff_iobuf || (xil_iob->type == ctx->id("OBUFTDS")))
+                                            ? (has_dci ? ctx->id("OBUFT_DCIEN") : ctx->id("OBUFT"))
+                                            : ctx->id("OBUF"),
+                                    get_net_or_empty(xil_iob, ctx->id("I")), pad_p_net,
+                                    get_net_or_empty(xil_iob, ctx->id("T")));
 
         if (is_riob18) {
             obuf_p->attrs[ctx->id("BEL")] = site_p + "/IOB18M/OUTBUF_DCIEN";
@@ -228,10 +265,10 @@ void XC7Packer::decompose_iob(CellInfo *xil_iob, bool is_hr, const std::string &
         connect_port(ctx, get_net_or_empty(xil_iob, ctx->id("DCITERMDISABLE")), obuf_p, ctx->id("DCITERMDISABLE"));
 
         CellInfo *obuf_n = insert_obuf(int_name(xil_iob->name, is_diff_obuf ? "N" : "OBUFTDS$subcell$N"),
-                                       (is_diff_iobuf || is_diff_out_iobuf || (xil_iob->type == ctx->id("OBUFTDS")))
-                                               ? (has_dci ? ctx->id("OBUFT_DCIEN") : ctx->id("OBUFT"))
-                                               : ctx->id("OBUF"),
-                                       inv_i, pad_n_net, get_net_or_empty(xil_iob, ctx->id("T")));
+                                    (is_diff_iobuf || (xil_iob->type == ctx->id("OBUFTDS")))
+                                            ? (has_dci ? ctx->id("OBUFT_DCIEN") : ctx->id("OBUFT"))
+                                            : ctx->id("OBUF"),
+                                    inv_i, pad_n_net, get_net_or_empty(xil_iob, ctx->id("T")));
 
         if (is_riob18) {
             obuf_n->attrs[ctx->id("BEL")] = site_n + "/IOB18S/OUTBUF_DCIEN";
@@ -243,6 +280,163 @@ void XC7Packer::decompose_iob(CellInfo *xil_iob, bool is_hr, const std::string &
         connect_port(ctx, get_net_or_empty(xil_iob, ctx->id("DCITERMDISABLE")), obuf_n, ctx->id("DCITERMDISABLE"));
 
         disconnect_port(ctx, xil_iob, ctx->id("DCITERMDISABLE"));
+
+        subcells.push_back(inv);
+        subcells.push_back(obuf_p);
+        subcells.push_back(obuf_n);
+    }
+    if (is_diff_out_ibuf) {
+        NetInfo *pad_p_net = get_net_or_empty(xil_iob, ctx->id("I"));
+        NPNR_ASSERT(pad_p_net != nullptr);
+        std::string site_p = pad_site(pad_p_net);
+        NetInfo *pad_n_net = get_net_or_empty(xil_iob, ctx->id("IB"));
+        NPNR_ASSERT(pad_n_net != nullptr);
+        std::string site_n = pad_site(pad_n_net);
+        std::string tile_p = get_tilename_by_sitename(ctx, site_p);
+        std::string tile_n = get_tilename_by_sitename(ctx, site_n);
+        bool is_riob18 = boost::starts_with(tile_p, "RIOB18_");
+        
+        disconnect_port(ctx, xil_iob, ctx->id("I"));
+        disconnect_port(ctx, xil_iob, ctx->id("IB"));
+
+        NetInfo *top_o_net = get_net_or_empty(xil_iob, ctx->id("O"));
+        disconnect_port(ctx, xil_iob, ctx->id("O"));
+
+        NetInfo *top_p_net = get_net_or_empty(xil_iob, ctx->id("OB"));
+        disconnect_port(ctx, xil_iob, ctx->id("OB"));
+
+        IdString ibuf_type = ctx->id("IBUFDS");
+        if (xil_iob->type == ctx->id("IBUFDS_IBUFDISABLE"))
+            ibuf_type = ctx->id("IBUFDS_IBUFDISABLE");
+        if (xil_iob->type == ctx->id("IBUFDS_INTERMDISABLE"))
+            ibuf_type = ctx->id("IBUFDS_INTERMDISABLE");
+        if (xil_iob->type == ctx->id("IBUFDS_DIFF_OUT_IBUFDISABLE"))
+            ibuf_type = ctx->id("IBUFDS_IBUFDISABLE");
+        if (xil_iob->type == ctx->id("IBUFDS_DIFF_OUT_INTERMDISABLE"))
+            ibuf_type = ctx->id("IBUFDS_INTERMDISABLE");
+        std::string inst_name ="/"+ std::string(ibuf_type.c_str(ctx));
+        CellInfo *inbuf_p = insert_diffibuf(int_name(xil_iob->name, inst_name, true), ibuf_type,
+                                          {pad_p_net, pad_n_net}, top_o_net);
+        replace_port(xil_iob, ctx->id("IBUFDISABLE"), inbuf_p, ctx->id("IBUFDISABLE"));
+        replace_port(xil_iob, ctx->id("INTERMDISABLE"), inbuf_p, ctx->id("INTERMDISABLE"));
+        inbuf_p->params.insert(xil_iob->params.begin(), xil_iob->params.end());
+        // Update IO primitives related to USE_IBUFDISABLE
+        if (driver_ibufdisable_port)
+            update_usr_ibufdisable(ctx, inbuf_p);
+        subcells.push_back(inbuf_p);
+        if (is_riob18) {
+            // TODO:
+        } else {
+            inbuf_p->attrs[ctx->id("BEL")] = site_p + "/IOB33M/INBUF_EN";
+            inbuf_p->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB33M");
+        }
+        CellInfo *inbuf_n = insert_diffibuf(int_name(xil_iob->name, inst_name+"_0", true), ibuf_type,
+                                          {pad_n_net, pad_p_net}, top_p_net);
+        replace_port(xil_iob, ctx->id("IBUFDISABLE"), inbuf_n, ctx->id("IBUFDISABLE"));
+        replace_port(xil_iob, ctx->id("INTERMDISABLE"), inbuf_n, ctx->id("INTERMDISABLE"));
+         if (is_riob18) {
+        } else {
+            inbuf_n->attrs[ctx->id("BEL")] = site_n + "/IOB33S/INBUF_EN";
+            inbuf_n->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB33S");
+        }
+        // Migrate the original cell's parameter
+        inbuf_n->params.insert(xil_iob->params.begin(), xil_iob->params.end());
+        if (driver_ibufdisable_port)
+            update_usr_ibufdisable(ctx, inbuf_n);
+        subcells.push_back(inbuf_n);
+    }
+    if (is_diff_out_iobuf){
+        NetInfo *pad_p_net = get_net_or_empty(xil_iob, ctx->id("IO"));
+        NPNR_ASSERT(pad_p_net != nullptr);
+        std::string site_p = pad_site(pad_p_net);
+        NetInfo *pad_n_net = get_net_or_empty(xil_iob, ctx->id("IOB"));
+        NPNR_ASSERT(pad_n_net != nullptr);
+        std::string site_n = pad_site(pad_n_net);
+        std::string tile_p = get_tilename_by_sitename(ctx, site_p);
+        bool is_riob18 = boost::starts_with(tile_p, "RIOB18_");
+        // Get the ports of o and ob
+        NetInfo *top_o_net = get_net_or_empty(xil_iob, ctx->id("O"));
+        NPNR_ASSERT(top_o_net != nullptr);
+        NetInfo *top_p_net = get_net_or_empty(xil_iob, ctx->id("OB"));
+        NPNR_ASSERT(top_p_net != nullptr);
+        disconnect_port(ctx, xil_iob, ctx->id("O"));
+        disconnect_port(ctx, xil_iob, ctx->id("OB"));
+        // Create two ibufds
+        IdString ibuf_type = ctx->id("IBUFDS");
+        if (xil_iob->type == ctx->id("IOBUFDS_DIFF_OUT_INTERMDISABLE"))
+            ibuf_type = ctx->id("IBUFDS_INTERMDISABLE");
+        std::string inst_name ="/"+ std::string(ibuf_type.c_str(ctx));
+        CellInfo *inbuf_p = insert_diffibuf(int_name(xil_iob->name, inst_name, true), ibuf_type,
+                                          {pad_p_net, pad_n_net}, top_o_net);
+        replace_port(xil_iob, ctx->id("IBUFDISABLE"), inbuf_p, ctx->id("IBUFDISABLE"));
+        replace_port(xil_iob, ctx->id("INTERMDISABLE"), inbuf_p, ctx->id("INTERMDISABLE"));
+        // Migrate the original cell's parameter
+        inbuf_p->params.insert(xil_iob->params.begin(), xil_iob->params.end());
+        // Update IO primitives related to USE_IBUFDISABLE
+        if (driver_ibufdisable_port)
+            update_usr_ibufdisable(ctx, inbuf_p);
+        subcells.push_back(inbuf_p);
+        if (is_riob18) {
+            // TODO:
+        } else {
+            inbuf_p->attrs[ctx->id("BEL")] = site_p + "/IOB33M/INBUF_EN";
+            inbuf_p->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB33M");
+        }
+        CellInfo *inbuf_n = insert_diffibuf(int_name(xil_iob->name, inst_name+"_0", true), ibuf_type,
+                                          {pad_n_net, pad_p_net}, top_p_net);
+        replace_port(xil_iob, ctx->id("IBUFDISABLE"), inbuf_n, ctx->id("IBUFDISABLE"));
+        replace_port(xil_iob, ctx->id("INTERMDISABLE"), inbuf_n, ctx->id("INTERMDISABLE"));
+        // Migrate the original cell's parameter
+        inbuf_n->params.insert(xil_iob->params.begin(), xil_iob->params.end());
+        // Update IO primitives related to USE_IBUFDISABLE
+        if (driver_ibufdisable_port)
+            update_usr_ibufdisable(ctx, inbuf_n);
+        if (is_riob18) {
+        } else {
+            inbuf_n->attrs[ctx->id("BEL")] = site_n + "/IOB33S/INBUF_EN";
+            inbuf_n->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB33S");
+        }
+        subcells.push_back(inbuf_n);
+        disconnect_port(ctx, xil_iob, ctx->id("IO"));
+        disconnect_port(ctx, xil_iob, ctx->id("IOB"));
+        NetInfo *inv_i = create_internal_net(xil_iob->name, is_diff_obuf ? "I_B" : "OBUFTDS$subnet$I_B");
+        CellInfo *inv = insert_outinv(int_name(xil_iob->name, is_diff_obuf ? "INV" : "OBUFTDS$subcell$INV"),
+                                      get_net_or_empty(xil_iob, ctx->id("I")), inv_i);
+        if (is_riob18) {
+            inv->attrs[ctx->id("BEL")] = site_n + "/IOB18S/O_ININV";
+            inv->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB18S");
+        } else {
+            inv->attrs[ctx->id("BEL")] = site_n + "/IOB33S/O_ININV";
+            inv->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB33S");
+        }
+        bool has_dci = xil_iob->type == ctx->id("IOBUFDS_DCIEN") || xil_iob->type == ctx->id("IOBUFDSE3");
+        CellInfo *obuf_p = insert_obuf(int_name(xil_iob->name, is_diff_obuf ? "P" : "OBUFTDS$subcell$P"),
+                                       (is_diff_iobuf || is_diff_out_iobuf || (xil_iob->type == ctx->id("OBUFTDS")))
+                                               ? (has_dci ? ctx->id("OBUFT_DCIEN") : ctx->id("OBUFT"))
+                                               : ctx->id("OBUF"),
+                                       get_net_or_empty(xil_iob, ctx->id("I")), pad_p_net,
+                                       get_net_or_empty(xil_iob, ctx->id("TM")));
+
+        if (is_riob18) {
+            obuf_p->attrs[ctx->id("BEL")] = site_p + "/IOB18M/OUTBUF_DCIEN";
+            obuf_p->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB18M");
+        } else {
+            obuf_p->attrs[ctx->id("BEL")] = site_p + "/IOB33M/OUTBUF";
+            obuf_p->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB33M");
+        }
+        CellInfo *obuf_n = insert_obuf(int_name(xil_iob->name, is_diff_obuf ? "N" : "OBUFTDS$subcell$N"),
+                                       (is_diff_iobuf || is_diff_out_iobuf || (xil_iob->type == ctx->id("OBUFTDS")))
+                                               ? (has_dci ? ctx->id("OBUFT_DCIEN") : ctx->id("OBUFT"))
+                                               : ctx->id("OBUF"),
+                                       inv_i, pad_n_net, get_net_or_empty(xil_iob, ctx->id("TM")));
+
+        if (is_riob18) {
+            obuf_n->attrs[ctx->id("BEL")] = site_n + "/IOB18S/OUTBUF_DCIEN";
+            obuf_n->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB18S");
+        } else {
+            obuf_n->attrs[ctx->id("BEL")] = site_n + "/IOB33S/OUTBUF";
+            obuf_n->attrs[ctx->id("X_IOB_SITE_TYPE")] = std::string("IOB33S");
+        }
 
         subcells.push_back(inv);
         subcells.push_back(obuf_p);
@@ -406,6 +600,14 @@ void XC7Packer::pack_io()
     }
     flush_cells();
 
+    // Before type conversion, add default parameters according to the primitive category
+    for (auto cell : sorted(ctx->cells)) {
+        CellInfo *ci = cell.second;
+        if(ci->type == IdString(ctx, "IBUF_IBUFDISABLE")){
+            ci->params.emplace(IdString(ctx, "USE_IBUFDISABLE"), Property("TRUE"));
+        }
+    }
+
     std::unordered_map<IdString, XFormRule> hriobuf_rules, hpiobuf_rules;
     hriobuf_rules[ctx->id("OBUF")].new_type = ctx->id("IOB33_OUTBUF");
     hriobuf_rules[ctx->id("OBUF")].port_xform[ctx->id("I")] = ctx->id("IN");
@@ -418,8 +620,12 @@ void XC7Packer::pack_io()
     hriobuf_rules[ctx->id("IBUF")].port_xform[ctx->id("O")] = ctx->id("OUT");
     hriobuf_rules[ctx->id("IBUF_INTERMDISABLE")] = hriobuf_rules[ctx->id("IBUF")];
     hriobuf_rules[ctx->id("IBUF_IBUFDISABLE")] = hriobuf_rules[ctx->id("IBUF")];
-    hriobuf_rules[ctx->id("IBUFDS_INTERMDISABLE_INT")] = hriobuf_rules[ctx->id("IBUF")];
-    hriobuf_rules[ctx->id("IBUFDS_INTERMDISABLE_INT")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
+    hriobuf_rules[ctx->id("IBUFDS_INTERMDISABLE")] = hriobuf_rules[ctx->id("IBUF")];
+    hriobuf_rules[ctx->id("IBUFDS_INTERMDISABLE")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
+    hriobuf_rules[ctx->id("IBUFDS_IBUFDISABLE")] = hriobuf_rules[ctx->id("IBUF")];
+    hriobuf_rules[ctx->id("IBUFDS_IBUFDISABLE")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
+    hriobuf_rules[ctx->id("IBUFDS_DIFF_OUT")] = hriobuf_rules[ctx->id("IBUF")];
+    hriobuf_rules[ctx->id("IBUFDS_DIFF_OUT")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
     hriobuf_rules[ctx->id("IBUFDS")] = hriobuf_rules[ctx->id("IBUF")];
     hriobuf_rules[ctx->id("IBUFDS")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
 
@@ -434,8 +640,10 @@ void XC7Packer::pack_io()
     hpiobuf_rules[ctx->id("IBUF")].port_xform[ctx->id("O")] = ctx->id("OUT");
     hpiobuf_rules[ctx->id("IBUF_INTERMDISABLE")] = hpiobuf_rules[ctx->id("IBUF")];
     hpiobuf_rules[ctx->id("IBUF_IBUFDISABLE")] = hpiobuf_rules[ctx->id("IBUF")];
-    hriobuf_rules[ctx->id("IBUFDS_INTERMDISABLE_INT")] = hriobuf_rules[ctx->id("IBUF")];
-    hpiobuf_rules[ctx->id("IBUFDS_INTERMDISABLE_INT")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
+    hpiobuf_rules[ctx->id("IBUFDS_INTERMDISABLE")] = hpiobuf_rules[ctx->id("IBUF")];
+    hpiobuf_rules[ctx->id("IBUFDS_INTERMDISABLE")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
+    hpiobuf_rules[ctx->id("IBUFDS_IBUFDISABLE")] = hpiobuf_rules[ctx->id("IBUF")];
+    hpiobuf_rules[ctx->id("IBUFDS_IBUFDISABLE")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
     hpiobuf_rules[ctx->id("IBUFDS")] = hpiobuf_rules[ctx->id("IBUF")];
     hpiobuf_rules[ctx->id("IBUFDS")].port_xform[ctx->id("IB")] = ctx->id("DIFFI_IN");
 
@@ -687,6 +895,18 @@ void XC7Packer::pack_iologic()
     std::unordered_map<IdString, BelId> iodelay_to_io;
     std::unordered_map<IdString, XFormRule> iologic_rules;
 
+    // IDDR
+    iologic_rules[ctx->id("IDDR")].new_type = ctx->id("ILOGICE3_IFF");
+    iologic_rules[ctx->id("IDDR")].port_multixform[ctx->id("C")] = { ctx->id("CK"), ctx->id("CKB") };
+    iologic_rules[ctx->id("IDDR")].port_xform[ctx->id("S")] = ctx->id("SR");
+    iologic_rules[ctx->id("IDDR")].port_xform[ctx->id("R")] = ctx->id("SR");
+
+    iologic_rules[ctx->id("IDDR_2CLK")].new_type = ctx->id("ILOGICE3_IFF");
+    iologic_rules[ctx->id("IDDR_2CLK")].port_xform[ctx->id("C")] = ctx->id("CK");
+    iologic_rules[ctx->id("IDDR_2CLK")].port_xform[ctx->id("CB")] = ctx->id("CKB");
+    iologic_rules[ctx->id("IDDR_2CLK")].port_xform[ctx->id("S")] = ctx->id("SR");
+    iologic_rules[ctx->id("IDDR_2CLK")].port_xform[ctx->id("R")] = ctx->id("SR");
+
     // SERDES
     iologic_rules[ctx->id("ISERDESE2")].new_type = ctx->id("ISERDESE2_ISERDESE2");
     iologic_rules[ctx->id("OSERDESE2")].new_type = ctx->id("OSERDESE2_OSERDESE2");
@@ -794,23 +1014,22 @@ void XC7Packer::pack_iologic()
             PortRef dest_port = *q->users.begin();
             auto is_tristate = dest_port.port == ctx->id("TRI");
 
+            NetInfo *s_in = get_net_or_empty(ci, ctx->id("S"));
+            if (s_in != nullptr && s_in->name == ctx->id("$PACKER_GND_NET")) disconnect_port(ctx, ci, ctx->id("S"));
+            NetInfo *r_in = get_net_or_empty(ci, ctx->id("R"));
+            if (r_in != nullptr && r_in->name == ctx->id("$PACKER_GND_NET")) disconnect_port(ctx, ci, ctx->id("R"));
+
             std::unordered_map<IdString, XFormRule> oddr_rules;
             if (boost::contains(io_bel_str, "IOB18"))
                 oddr_rules[ctx->id("ODDR")].new_type = is_tristate ? ctx->id("OLOGICE2_TFF") : ctx->id("OLOGICE2_OUTFF");
             else
                 oddr_rules[ctx->id("ODDR")].new_type = is_tristate ? ctx->id("OLOGICE3_TFF") : ctx->id("OLOGICE3_OUTFF");
             oddr_rules[ctx->id("ODDR")].port_xform[ctx->id("C")] = ctx->id("CK");
-            NetInfo *s_net = get_net_or_empty(ci, ctx->id("S"));
-            NetInfo *r_net = get_net_or_empty(ci, ctx->id("R"));
-            if (s_net != nullptr && s_net->name == ctx->id("$PACKER_GND_NET"))
-                disconnect_port(ctx, ci, ctx->id("S"));
-            else 
-                oddr_rules[ctx->id("ODDR")].port_xform[ctx->id("S")] = ctx->id("SR");
-            if (r_net != nullptr && r_net->name == ctx->id("$PACKER_GND_NET"))
-                disconnect_port(ctx, ci, ctx->id("R"));
-            else 
-                oddr_rules[ctx->id("ODDR")].port_xform[ctx->id("R")] = ctx->id("SR");
+            oddr_rules[ctx->id("ODDR")].port_xform[ctx->id("S")] = ctx->id("SR");
+            oddr_rules[ctx->id("ODDR")].port_xform[ctx->id("R")] = ctx->id("SR");
             xform_cell(oddr_rules, ci);
+
+            fold_inverter(ci, "CLK");
 
             ci->attrs[ctx->id("BEL")] = ol_site + (is_tristate ? "/TFF" : "/OUTFF");
         } else if (ci->type == ctx->id("OSERDESE2")) {
@@ -845,8 +1064,16 @@ void XC7Packer::pack_iologic()
             } else {
                 log_error("%s '%s' has illegal fanout on OQ or OFB output\n", ci->type.c_str(ctx), ctx->nameOf(ci));
             }
-        } else if (ci->type == ctx->id("IDDR")) {
+        } else if (ci->type == ctx->id("IDDR") || ci->type == ctx->id("IDDR_2CLK")) {
             fold_inverter(ci, "C");
+            if (ci->type == ctx->id("IDDR_2CLK")){
+                fold_inverter(ci, "CB");
+            }
+
+            NetInfo *s_in = get_net_or_empty(ci, ctx->id("S"));
+            if (s_in != nullptr && s_in->name == ctx->id("$PACKER_GND_NET")) disconnect_port(ctx, ci, ctx->id("S"));
+            NetInfo *r_in = get_net_or_empty(ci, ctx->id("R"));
+            if (r_in != nullptr && r_in->name == ctx->id("$PACKER_GND_NET")) disconnect_port(ctx, ci, ctx->id("R"));
 
             BelId io_bel;
             NetInfo *d = get_net_or_empty(ci, ctx->id("D"));
@@ -864,25 +1091,6 @@ void XC7Packer::pack_iologic()
 
             std::string iol_site = get_ilogic_site(ctx->getBelName(io_bel).str(ctx));
             ci->attrs[ctx->id("BEL")] = iol_site + "/IFF";
-
-            std::unordered_map<IdString, XFormRule> iddr_rules;
-            iddr_rules[ctx->id("IDDR")].new_type = ctx->id("ILOGICE3_IFF");
-            iddr_rules[ctx->id("IDDR")].port_multixform[ctx->id("C")] = { ctx->id("CK"), ctx->id("CKB") };
-            iddr_rules[ctx->id("IDDR")].port_xform[ctx->id("S")] = ctx->id("SR");
-            iddr_rules[ctx->id("IDDR")].port_xform[ctx->id("R")] = ctx->id("SR");
-
-            NetInfo *s_net = get_net_or_empty(ci, ctx->id("S"));
-            NetInfo *r_net = get_net_or_empty(ci, ctx->id("R"));
-            if (s_net != nullptr && s_net->name == ctx->id("$PACKER_GND_NET"))
-                disconnect_port(ctx, ci, ctx->id("S"));
-            else 
-                iddr_rules[ctx->id("IDDR")].port_xform[ctx->id("S")] = ctx->id("SR");
-            if (r_net != nullptr && r_net->name == ctx->id("$PACKER_GND_NET"))
-                disconnect_port(ctx, ci, ctx->id("R"));
-            else 
-                iddr_rules[ctx->id("IDDR")].port_xform[ctx->id("R")] = ctx->id("SR");
-            xform_cell(iddr_rules, ci);
-
         } else if (ci->type == ctx->id("ISERDESE2")) {
             fold_inverter(ci, "CLKB");
             fold_inverter(ci, "OCLKB");

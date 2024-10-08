@@ -299,6 +299,13 @@ enum PlaceStrength
     STRENGTH_USER = 5
 };
 
+enum ClkStatus
+{
+    CLK_STATUS_NONE = 0,
+    CLK_STATUS_NOCLKINV = 1,
+    CLK_STATUS_CLKINV = 2
+};
+
 struct PortRef
 {
     CellInfo *cell = nullptr;

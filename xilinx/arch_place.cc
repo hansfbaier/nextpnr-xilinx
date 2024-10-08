@@ -632,6 +632,19 @@ bool Arch::isValidBelForCell(CellInfo *cell, BelId bel) const
 {
     if (usp_bel_hard_unavail(bel))
         return false;
+
+    // Check clock inversion
+    std::string cell_clk_status = str_or_default(cell->attrs, id_CLK_STATUS, "NONE");
+    if (cell_clk_status != "NONE") {
+        auto tile_clk_status = tileStatus[bel.tile].clk_status;
+        if (tile_clk_status != ClkStatus::CLK_STATUS_NONE){
+            if (tile_clk_status == ClkStatus::CLK_STATUS_CLKINV && cell_clk_status != "CLKINV")
+                return false;
+            else if (tile_clk_status == ClkStatus::CLK_STATUS_NOCLKINV && cell_clk_status != "NOCLKINV")
+                return false;
+        }
+    }
+
     return true;
 }
 

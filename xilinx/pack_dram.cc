@@ -153,21 +153,24 @@ void XilinxPacker::pack_dram()
     std::unordered_map<DRAMControlSet, std::vector<CellInfo *>, DRAMControlSetHash> dram_groups;
     std::unordered_map<IdString, DRAMType> dram_types;
 
-    dram_types[ctx->id("RAM32X1S")] = {5, 1, 0};
-    dram_types[ctx->id("RAM32X1D")] = {5, 1, 1};
-    dram_types[ctx->id("RAM64X1S")] = {6, 1, 0};
-    dram_types[ctx->id("RAM64X1D")] = {6, 1, 1};
-    dram_types[ctx->id("RAM128X1S")] = {7, 1, 0};
-    dram_types[ctx->id("RAM128X1D")] = {7, 1, 1};
-    dram_types[ctx->id("RAM256X1S")] = {8, 1, 0};
-    dram_types[ctx->id("RAM256X1D")] = {8, 1, 1};
-    dram_types[ctx->id("RAM512X1S")] = {9, 1, 0};
-    dram_types[ctx->id("RAM512X1D")] = {9, 1, 1};
+    dram_types[ctx->id("RAM32X1S")]   = {5, 1, 0};
+    dram_types[ctx->id("RAM32X2S")]   = {5, 2, 0};
+    dram_types[ctx->id("RAM32X1S_1")] = {5, 1, 0};
+    dram_types[ctx->id("RAM32X1D")]   = {5, 1, 1};
+    dram_types[ctx->id("RAM64X1S")]   = {6, 1, 0};
+    dram_types[ctx->id("RAM64X1S_1")] = {6, 1, 0};
+    dram_types[ctx->id("RAM64X1D")]   = {6, 1, 1};
+    dram_types[ctx->id("RAM128X1S")]  = {7, 1, 0};
+    dram_types[ctx->id("RAM128X1D")]  = {7, 1, 1};
+    dram_types[ctx->id("RAM256X1S")]  = {8, 1, 0};
+    dram_types[ctx->id("RAM256X1D")]  = {8, 1, 1};
+    dram_types[ctx->id("RAM512X1S")]  = {9, 1, 0};
+    dram_types[ctx->id("RAM512X1D")]  = {9, 1, 1};
 
     // Transform from RAMD64E UNISIM to SLICE_LUTX bel
     dram_rules[ctx->id("RAMD64E")].new_type = id_SLICE_LUTX;
-    dram_rules[ctx->id("RAMD64E")].param_xform[ctx->id("IS_CLK_INVERTED")] = ctx->id("IS_WCLK_INVERTED");
-    dram_rules[ctx->id("RAMD64E")].set_attrs.emplace_back(ctx->id("X_LUT_AS_DRAM"), "1");
+    dram_rules[ctx->id("RAMD64E")].set_attrs.emplace_back(ctx->id("X_LUT_AS_DRAM"), Property(1));
+    dram_rules[ctx->id("RAMD64E")].set_attrs.emplace_back(ctx->id("X_IS_SLICEM"), Property(1));
     for (int i = 0; i < 6; i++)
         dram_rules[ctx->id("RAMD64E")].port_xform[ctx->id("RADR" + std::to_string(i))] =
                 ctx->id("A" + std::to_string(i + 1));
@@ -179,15 +182,14 @@ void XilinxPacker::pack_dram()
 
     // Rules for upper and lower RAMD32E
     dram32_6_rules[ctx->id("RAMD32")].new_type = id_SLICE_LUTX;
-    dram32_6_rules[ctx->id("RAMD32")].param_xform[ctx->id("IS_CLK_INVERTED")] = ctx->id("IS_WCLK_INVERTED");
-    dram32_6_rules[ctx->id("RAMD32")].set_attrs.emplace_back(ctx->id("X_LUT_AS_DRAM"), "1");
+    dram32_6_rules[ctx->id("RAMD32")].set_attrs.emplace_back(ctx->id("X_LUT_AS_DRAM"), Property(1));
     for (int i = 0; i < 5; i++)
         dram32_6_rules[ctx->id("RAMD32")].port_xform[ctx->id("RADR" + std::to_string(i))] =
                 ctx->id("A" + std::to_string(i + 1));
     for (int i = 0; i < 5; i++)
         dram32_6_rules[ctx->id("RAMD32")].port_xform[ctx->id("WADR" + std::to_string(i))] =
                 ctx->id("WA" + std::to_string(i + 1));
-    dram32_6_rules[ctx->id("RAMD32")].port_xform[ctx->id("I")] = id_DI2;
+    dram32_6_rules[ctx->id("RAMD32")].port_xform[ctx->id("I")] = id_DI1;
     dram32_6_rules[ctx->id("RAMD32")].port_xform[ctx->id("O")] = id_O6;
 
     dram32_5_rules = dram32_6_rules;
@@ -246,9 +248,15 @@ void XilinxPacker::pack_dram()
         for (int i = 0; i < dt.abits; i++)
             dcs.wa.push_back(get_net_or_empty(
                     ci, ctx->id(dt.abits <= 6 ? ("A" + std::to_string(i)) : ("A[" + std::to_string(i) + "]"))));
+        if (dt.abits == 5) {
+            dcs.wa.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
+        }
         dcs.wclk = get_net_or_empty(ci, ctx->id("WCLK"));
         dcs.we = get_net_or_empty(ci, ctx->id("WE"));
         dcs.wclk_inv = bool_or_default(ci->params, ctx->id("IS_WCLK_INVERTED"));
+        if(ci->type == ctx->id("RAM32X1S_1") || ci->type == ctx->id("RAM64X1S_1")){
+            dcs.wclk_inv = true;
+        }
         dcs.memtype = ci->type;
         dram_groups[dcs].push_back(ci);
     }
@@ -324,13 +332,23 @@ void XilinxPacker::pack_dram()
                 if (get_net_or_empty(cell, ctx->id("DPO")) != nullptr)
                     z_size++;
 
+                auto init_property=get_or_default(cell->params, ctx->id("INIT"), Property(0));
+                // Only the high-order LUT5 is used, str is in reverse order, 
+				// first fill the back with zeros to make up 32 bits, 
+				// then insert 32 zeros in the front, which is equivalent to shifting left 32 bits
+                init_property.str.append(32 - init_property.str.size(), '0');
+                init_property.str.insert(0, 32, '0');
+                init_property.update_intval();
+
+                bool spo_is_base = false;
                 if (z == (height - 1) || (z - z_size + 1) < 0) {
                     z = (height - 1);
                     // Topmost cell is the write address input
                     std::vector<NetInfo *> address(cs.wa.begin(), cs.wa.begin() + std::min<size_t>(cs.wa.size(), 5));
-                    address.push_back(ctx->nets[ctx->id("$PACKER_GND_NET")].get());
+                    address.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
                     base = create_dram_lut(cell->name.str(ctx) + "/ADDR", nullptr, cs, address, nullptr, nullptr, z);
                     z--;
+                    spo_is_base = true;
                 }
 
                 NetInfo *dpo = get_net_or_empty(cell, ctx->id("DPO"));
@@ -340,19 +358,19 @@ void XilinxPacker::pack_dram()
 
                 NetInfo *di = get_net_or_empty(cell, ctx->id("D"));
                 if (spo != nullptr) {
-                    if (z == (height - 2)) {
+                    if (spo_is_base) {
                         // Can fold DPO into address buffer
                         connect_port(ctx, spo, base, ctx->id("O6"));
                         connect_port(ctx, di, base, ctx->id("DI1"));
                         if (cell->params.count(ctx->id("INIT")))
-                            base->params[ctx->id("INIT")] = cell->params[ctx->id("INIT")];
+                            base->params[ctx->id("INIT")] = init_property;
                     } else {
                         std::vector<NetInfo *> address(cs.wa.begin(),
                                                        cs.wa.begin() + std::min<size_t>(cs.wa.size(), 5));
-                        address.push_back(ctx->nets[ctx->id("$PACKER_GND_NET")].get());
+                        address.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
                         CellInfo *dpr = create_dram_lut(cell->name.str(ctx) + "/SP", base, cs, address, di, spo, z);
                         if (cell->params.count(ctx->id("INIT")))
-                            dpr->params[ctx->id("INIT")] = cell->params[ctx->id("INIT")];
+                            dpr->params[ctx->id("INIT")] = init_property;
                         z--;
                     }
                 }
@@ -361,77 +379,351 @@ void XilinxPacker::pack_dram()
                     std::vector<NetInfo *> address;
                     for (int i = 0; i < 5; i++)
                         address.push_back(get_net_or_empty(cell, ctx->id("DPRA" + std::to_string(i))));
-                    address.push_back(ctx->nets[ctx->id("$PACKER_GND_NET")].get());
+                    address.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());                   
                     CellInfo *dpr = create_dram_lut(cell->name.str(ctx) + "/DP", base, cs, address, di, dpo, z);
                     if (cell->params.count(ctx->id("INIT")))
-                        dpr->params[ctx->id("INIT")] = cell->params[ctx->id("INIT")];
+                        dpr->params[ctx->id("INIT")] = init_property;
                     z--;
                 }
 
                 packed_cells.insert(cell->name);
-            }
-        } else if (cs.memtype == ctx->id("RAM128X1D") || cs.memtype == ctx->id("RAM256X1D")) {
-            // Split these cells into write and read ports and associated mux tree
-            bool m256 = cs.memtype == ctx->id("RAM256X1D");
-            if (m256 && ctx->xc7)
-                log_error("RAM256X1D is not supported on xc7!\n");
-            for (CellInfo *ci : group.second) {
-                auto init = get_or_default(ci->params, ctx->id("INIT"), Property(0, m256 ? 256 : 128));
-                std::vector<NetInfo *> spo_pre, dpo_pre;
-                int z = (height - 1);
+            } 
+        } else if (cs.memtype == ctx->id("RAM32X1S")) {
+            int z = (height - 1);
+            CellInfo *base = nullptr;
+            for (auto cell : group.second) {
+                NPNR_ASSERT(cell->type == ctx->id("RAM32X1S"));
 
-                NetInfo *dpo = get_net_or_empty(ci, ctx->id("DPO"));
-                NetInfo *spo = get_net_or_empty(ci, ctx->id("SPO"));
-                disconnect_port(ctx, ci, ctx->id("DPO"));
-                disconnect_port(ctx, ci, ctx->id("SPO"));
+                auto init_property=get_or_default(cell->params, ctx->id("INIT"), Property(0));
+                // Only the high-order LUT5 is used, str is in reverse order, 
+				// first fill the back with zeros to make up 32 bits, 
+				// then insert 32 zeros in the front, which is equivalent to shifting left 32 bits
+                init_property.str.append(32-init_property.str.size(), '0');
+                init_property.str.insert(0, 32, '0');
+                init_property.update_intval();
 
-                // Low 6 bits of address - connect directly to RAM cells
-                std::vector<NetInfo *> addressw_64(cs.wa.begin(), cs.wa.begin() + std::min<size_t>(cs.wa.size(), 6));
-                // Upper bits of address - feed decode muxes
-                std::vector<NetInfo *> addressw_high(cs.wa.begin() + std::min<size_t>(cs.wa.size(), 6), cs.wa.end());
-                CellInfo *base = nullptr;
-                // Combined write address/SPO read cells
-                for (int i = 0; i < (m256 ? 4 : 2); i++) {
-                    NetInfo *spo_i = create_internal_net(ci->name, "SPO_" + std::to_string(i), false);
-                    CellInfo *spr = create_dram_lut(ci->name.str(ctx) + "/ADDR" + std::to_string(i), base, cs,
-                                                    addressw_64, get_net_or_empty(ci, ctx->id("D")), spo_i, z);
-                    if (base == nullptr)
-                        base = spr;
-                    spo_pre.push_back(spo_i);
-                    spr->params[ctx->id("INIT")] = init.extract(i * 64, 64);
+                
+                NetInfo *di = get_net_or_empty(cell, ctx->id("D"));
+                NetInfo *dout = get_net_or_empty(cell, ctx->id("O"));
+
+                disconnect_port(ctx, cell, ctx->id("O"));
+
+                if (z <0)
+                    z = (height - 1);
+                if (z == (height - 1)) {
+                    // base
+                    // Topmost cell is the write address input
+                    std::vector<NetInfo *> address(cs.wa.begin(), cs.wa.begin() + std::min<size_t>(cs.wa.size(), 5));
+                    address.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
+                    base = create_dram_lut(cell->name.str(ctx), nullptr, cs, address, di, dout, z);
+                    if (cell->params.count(ctx->id("INIT")))
+                        base->params[ctx->id("INIT")] = init_property;
+                    z--;
+                } else {
+                    std::vector<NetInfo *> address(cs.wa.begin(),
+                                                       cs.wa.begin() + std::min<size_t>(cs.wa.size(), 5));
+                    address.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
+                    CellInfo *ram_lut = create_dram_lut(cell->name.str(ctx), base, cs, address, di, dout, z);
+                    if (cell->params.count(ctx->id("INIT")))
+                        ram_lut->params[ctx->id("INIT")] = init_property;
                     z--;
                 }
-                // Decode mux tree using MUXF[78]
-                create_muxf_tree(base, "SPO", spo_pre, addressw_high, spo, m256 ? 4 : (ctx->xc7 ? 2 : 6));
+                packed_cells.insert(cell->name);
+            }
+        } 
+        else if (cs.memtype == ctx->id("RAM32X2S")) {
+            int z = (height - 1);
+            CellInfo *base = nullptr;
+            for (auto cell : group.second) {
+                NPNR_ASSERT(cell->type == ctx->id("RAM32X2S"));
+                // Handles up to two RAM32X2S
+                if (z < 1) {
+                    z = (height - 1);
+                    base = nullptr;
+                } 
+                // Read address lines (single-ended read and write a set of address lines)
+                std::vector<NetInfo *> address;
+                for (int i = 0; i < 5; i++)
+                    address.push_back(get_net_or_empty(cell, ctx->id("A" + std::to_string(i))));
+                // Read high-order LUT5, and set the sixth read address line to high level
+                address.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
+
+                for (int i = 0; i < 2; i++) {
+                    NetInfo *di = get_net_or_empty(cell, ctx->id("D" + std::to_string(i)));
+                    NetInfo *dout = get_net_or_empty(cell, ctx->id("O" + std::to_string(i)));
+                    disconnect_port(ctx, cell, ctx->id("O" + std::to_string(i)));
+
+                    CellInfo *ram_lut = create_dram_lut(
+                        cell->name.str(ctx) + "/RAM32X1S" + std::to_string(i) + "/SP",
+                        base, cs, address, di, dout, z);
+
+                    IdString init_param = ctx->id("INIT_0" + std::to_string(i));
+                    if (cell->params.count(init_param)) {
+                        auto init_property = cell->params.at(init_param);
+                        init_property.str.append(32 - init_property.str.size(), '0');
+                        init_property.str.insert(0, 32, '0');
+                        init_property.update_intval();
+                        ram_lut->params[ctx->id("INIT")] = init_property;
+                    }
+                    if (base == nullptr) base = ram_lut;
+                    z--;                    
+                }
+                packed_cells.insert(cell->name);               
+            }
+        } else if (cs.memtype == ctx->id("RAM64X1S")) {
+             int z = (height - 1);
+             CellInfo *base = nullptr;
+             for (auto cell : group.second) {
+                NPNR_ASSERT(cell->type == ctx->id("RAM64X1S"));
+                NetInfo *di = get_net_or_empty(cell, ctx->id("D"));
+                NetInfo *dout = get_net_or_empty(cell, ctx->id("O"));
+
+                disconnect_port(ctx, cell, ctx->id("O"));
+
+                if (z <0)
+                    z = (height - 1);
+                if (z == (height - 1)) {
+                    base = create_dram_lut(cell->name.str(ctx), nullptr, cs, cs.wa, di, dout, z);
+                    if (cell->params.count(ctx->id("INIT")))
+                        base->params[ctx->id("INIT")] = cell->params[ctx->id("INIT")];
+                    z--;                    
+             } else {
+                    CellInfo *ram_lut = create_dram_lut(cell->name.str(ctx), base, cs, cs.wa, di, dout, z);
+                    if (cell->params.count(ctx->id("INIT")))
+                        ram_lut->params[ctx->id("INIT")] = cell->params[ctx->id("INIT")];
+                    z--;                    
+                }
+                packed_cells.insert(cell->name);
+             }
+        } else if (cs.memtype == ctx->id("RAM32X1S_1")) {
+            int z = (height - 1);
+            CellInfo *base = nullptr;
+            for (auto cell : group.second) {
+                NPNR_ASSERT(cell->type == ctx->id("RAM32X1S_1"));
+
+                auto init_property=get_or_default(cell->params, ctx->id("INIT"), Property(0));
+                // Only the high-order LUT5 is used, str is in reverse order, 
+                // first fill the back with zeros to make up 32 bits, 
+                // then insert 32 zeros in the front, which is equivalent to shifting left 32 bits
+                init_property.str.append(32-init_property.str.size(), '0');
+                init_property.str.insert(0, 32, '0');
+                init_property.update_intval();
+
+                NetInfo *di = get_net_or_empty(cell, ctx->id("D"));
+                NetInfo *dout = get_net_or_empty(cell, ctx->id("O"));
+
+                disconnect_port(ctx, cell, ctx->id("O"));
+
+                if (z <0)
+                    z = (height - 1);
+                if (z == (height - 1)) {
+                    std::vector<NetInfo *> address(cs.wa.begin(), cs.wa.begin() + std::min<size_t>(cs.wa.size(), 5));
+                    address.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
+                    base = create_dram_lut(cell->name.str(ctx), nullptr, cs, address, di, dout, z);
+                    if (cell->params.count(ctx->id("INIT")))
+                        base->params[ctx->id("INIT")] = init_property;
+                    base->attrs[ctx->id("CLK_STATUS")] = Property("CLKINV");
+                    z--;
+                } else {
+                    std::vector<NetInfo *> address(cs.wa.begin(),
+                                                       cs.wa.begin() + std::min<size_t>(cs.wa.size(), 5));
+                    address.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
+                    CellInfo *ram_lut = create_dram_lut(cell->name.str(ctx), base, cs, address, di, dout, z);
+                    if (cell->params.count(ctx->id("INIT")))
+                        ram_lut->params[ctx->id("INIT")] = init_property;
+                    ram_lut->attrs[ctx->id("CLK_STATUS")] = Property("CLKINV");
+                    z--;
+                }
+                packed_cells.insert(cell->name);
+
+             }
+        } else if (cs.memtype == ctx->id("RAM64X1S_1")) {
+            int z = (height - 1);
+            CellInfo *base = nullptr;
+            for (auto cell : group.second) {
+                NPNR_ASSERT(cell->type == ctx->id("RAM64X1S_1"));
+                NetInfo *di = get_net_or_empty(cell, ctx->id("D"));
+                NetInfo *dout = get_net_or_empty(cell, ctx->id("O"));
+
+                disconnect_port(ctx, cell, ctx->id("O"));
+
+                if (z <0)
+                    z = (height - 1);
+                if (z == (height - 1)) {
+                    base = create_dram_lut(cell->name.str(ctx), nullptr, cs, cs.wa, di, dout, z);
+                    if (cell->params.count(ctx->id("INIT")))
+                        base->params[ctx->id("INIT")] = cell->params[ctx->id("INIT")];
+                    base->attrs[ctx->id("CLK_STATUS")] = Property("CLKINV");
+                    z--;                    
+                } else {
+                        CellInfo *ram_lut = create_dram_lut(cell->name.str(ctx), base, cs, cs.wa, di, dout, z);
+                        if (cell->params.count(ctx->id("INIT")))
+                            ram_lut->params[ctx->id("INIT")] = cell->params[ctx->id("INIT")];
+                        ram_lut->attrs[ctx->id("CLK_STATUS")] = Property("CLKINV");
+                        z--;                    
+                    }
+                packed_cells.insert(cell->name);
+            }            
+        } else if (cs.memtype == ctx->id("RAM128X1S")) {
+            for (auto cell : group.second) {
+                int z = (height - 1);
+                CellInfo *base = nullptr;
+                // Only the high-order LUT5 is used, str is in reverse order,
+                // first fill the back with zeros to make up 32 bits, and then insert 32 zeros in the front,
+                // which is equivalent to shifting a vector 32 bits left to store the output of two 64-bit LUTs
+                std::vector<NetInfo *> dout_interm;     
+
+                NPNR_ASSERT(cell->type == ctx->id("RAM128X1S"));
+                NetInfo *di = get_net_or_empty(cell, ctx->id("D"));
+                NetInfo *dout = get_net_or_empty(cell, ctx->id("O"));
+                disconnect_port(ctx, cell, ctx->id("O"));
+
+                // Split the address into lower 6 bits (for 64-bit LUT) and upper 1 bit (for MUXF7 selection)
+                std::vector<NetInfo *> addressw_low(cs.wa.begin(), cs.wa.begin() + 6);
+                std::vector<NetInfo *> addressw_high(cs.wa.begin() + 6, cs.wa.end());   
+                
+                // Create the first 64-bit LUT (lower 64 bits)
+                NetInfo *dout_low = create_internal_net(cell->name, "O_LOW", false);
+                CellInfo *dram_low = create_dram_lut(cell->name.str(ctx) + "/LOW", base, cs, addressw_low, di, dout_low, z);
+                z--;
+                dout_interm.push_back(dout_low);
+
+                if (base == nullptr) base = dram_low;
+                
+                // Create a second 64-bit LUT (upper 64 bits)
+                NetInfo *dout_high = create_internal_net(cell->name, "O_HIGH", false);
+                CellInfo *dram_high = create_dram_lut(cell->name.str(ctx) + "/HIGH", base, cs, 
+                                                    addressw_low, di, dout_high, z);
+                z--;
+                dout_interm.push_back(dout_high);
+
+                // If the original RAM128X1S has INIT parameters,
+                // divide it into two halves, each with 64 bits,
+                // and set them to two 64-bit LUTs respectively.
+                if (cell->params.count(ctx->id("INIT"))) {
+                    Property init = cell->params.at(ctx->id("INIT"));
+                    dram_low->params[ctx->id("INIT")] = init.extract(0, 64);
+                    dram_high->params[ctx->id("INIT")] = init.extract(64, 64);
+                }
+
+                // Use the create_muxf_tree function to create MUXF7 and select the output of two 64-bit LUTs
+                create_muxf_tree(dram_low, "O", dout_interm, addressw_high, dout, 2);
+                packed_cells.insert(cell->name);         
+            }
+        } else if (cs.memtype == ctx->id("RAM256X1S")) {
+            for (auto cell : group.second) {
+                int z = (height - 1);
+                std::vector<NetInfo *> dout_interm;
+                NPNR_ASSERT(cell->type == ctx->id("RAM256X1S"));
+
+                // get input and output ports
+                NetInfo *di = get_net_or_empty(cell, ctx->id("D"));
+                NetInfo *dout = get_net_or_empty(cell, ctx->id("O"));
+                // Disconnect the original output since we will be using the new output network
+                disconnect_port(ctx, cell, ctx->id("O"));
+
+                // Split address lines: lower 6 bits for DRAM LUT, upper 2 bits for MUX selection
+                std::vector<NetInfo *> addressw_low(cs.wa.begin(), cs.wa.begin() + 6);
+                std::vector<NetInfo *> addressw_high(cs.wa.begin() + 6, cs.wa.end());   
+
+                NetInfo *dout_d = create_internal_net(cell->name, "O_RAMS64E_D", false);
+                CellInfo *lut_d = create_dram_lut(cell->name.str(ctx) + "/RAMS64E_D", 
+                                                nullptr, cs, addressw_low, di, dout_d, z);
+                z--;
+                dout_interm.push_back(dout_d);
+
+                NetInfo *dout_c = create_internal_net(cell->name, "O_RAMS64E_C", false);
+                CellInfo *lut_c = create_dram_lut(cell->name.str(ctx) + "/RAMS64E_C", 
+                                                lut_d, cs, addressw_low, di, dout_c, z);
+                z--;
+                dout_interm.push_back(dout_c);
+
+                NetInfo *dout_b = create_internal_net(cell->name, "O_RAMS64E_B", false);
+                CellInfo *lut_b = create_dram_lut(cell->name.str(ctx) + "/RAMS64E_B", 
+                                                lut_d, cs, addressw_low, di, dout_b, z);
+                z--;
+                dout_interm.push_back(dout_b);
+
+                NetInfo *dout_a = create_internal_net(cell->name, "O_RAMS64E_A", false);
+                CellInfo *lut_a = create_dram_lut(cell->name.str(ctx) + "/RAMS64E_A", 
+                                                lut_d, cs, addressw_low, di, dout_a, z);
+                dout_interm.push_back(dout_a);
+
+                if (cell->params.count(ctx->id("INIT"))) {
+                    Property init = cell->params.at(ctx->id("INIT"));
+                    lut_d->params[ctx->id("INIT")] = init.extract(192, 64);
+                    lut_c->params[ctx->id("INIT")] = init.extract(128, 64);
+                    lut_b->params[ctx->id("INIT")] = init.extract(64, 64);
+                    lut_a->params[ctx->id("INIT")] = init.extract(0, 64);
+                }
+                // tree to select the correct DRAM LUT output
+                create_muxf_tree(lut_d, "O", dout_interm, addressw_high, dout, 0);
+                packed_cells.insert(cell->name);  
+
+            } 
+        } else if (cs.memtype == ctx->id("RAM128X1D")) {
+            
+            for (auto cell : group.second) {
+                CellInfo *base = nullptr;
+                int z = (height - 1);
+                NPNR_ASSERT(cell->type == ctx->id("RAM128X1D"));
+
+                auto    init = get_or_default(cell->params, ctx->id("INIT"), Property(0, 128));
+                NetInfo *dpo = get_net_or_empty(cell, ctx->id("DPO"));
+                NetInfo *spo = get_net_or_empty(cell, ctx->id("SPO"));
+                
+                // disconnect the original output
+                disconnect_port(ctx, cell, ctx->id("DPO"));
+                disconnect_port(ctx, cell, ctx->id("SPO"));
+
+                // prepare address lines
+                std::vector<NetInfo *> addressw_64(cs.wa.begin(), cs.wa.begin() + std::min<size_t>(cs.wa.size(), 6));
+                std::vector<NetInfo *> addressw_high(cs.wa.begin() + std::min<size_t>(cs.wa.size(), 6), cs.wa.end());
+
+                std::vector<NetInfo *> spo_pre, dpo_pre;
+
+                NetInfo *spo_low = create_internal_net(cell->name, "SPO_LOW", false);
+                CellInfo *sp_low = create_dram_lut(cell->name.str(ctx) + "/SP.LOW", base, cs,
+                                                addressw_64, get_net_or_empty(cell, ctx->id("D")), spo_low, z);
+                if (base == nullptr)
+                    base = sp_low;
+                spo_pre.push_back(spo_low);
+                sp_low->params[ctx->id("INIT")] = init.extract(0, 64);
+                z--;
+
+                NetInfo *spo_high = create_internal_net(cell->name, "SPO_HIGH", false);
+                CellInfo *sp_high = create_dram_lut(cell->name.str(ctx) + "/SP.HIGH", base, cs,
+                                                    addressw_64, get_net_or_empty(cell, ctx->id("D")), spo_high, z);
+                spo_pre.push_back(spo_high);
+                sp_high->params[ctx->id("INIT")] = init.extract(64, 64);
+                z--;
 
                 std::vector<NetInfo *> addressr_64, addressr_high;
-                for (int i = 0; i < (m256 ? 8 : 7); i++) {
+                for (int i = 0; i < 7; i++) {
                     (i >= 6 ? addressr_high : addressr_64)
-                            .push_back(get_net_or_empty(ci, ctx->id("DPRA[" + std::to_string(i) + "]")));
+                            .push_back(get_net_or_empty(cell, ctx->id("DPRA[" + std::to_string(i) + "]")));
                 }
-                // Read-only port cells
-                for (int i = 0; i < (m256 ? 4 : 2); i++) {
-                    NetInfo *dpo_i = create_internal_net(ci->name, "DPO_" + std::to_string(i), false);
-                    CellInfo *dpr = create_dram_lut(ci->name.str(ctx) + "/DPR" + std::to_string(i), base, cs,
-                                                    addressr_64, get_net_or_empty(ci, ctx->id("D")), dpo_i, z);
-                    dpo_pre.push_back(dpo_i);
-                    dpr->params[ctx->id("INIT")] = init.extract(i * 64, 64);
-                    z--;
-                }
-                // Decode mux tree using MUXF[78]
-                create_muxf_tree(base, "DPO", dpo_pre, addressr_high, dpo, m256 ? 0 : (ctx->xc7 ? 0 : 4));
 
-                packed_cells.insert(ci->name);
+                NetInfo *dpo_low = create_internal_net(cell->name, "DPO_LOW", false);
+                CellInfo *dp_low = create_dram_lut(cell->name.str(ctx) + "/DP.LOW", base, cs,
+                                                addressr_64, get_net_or_empty(cell, ctx->id("D")), dpo_low, z);
+                dpo_pre.push_back(dpo_low);
+                dp_low->params[ctx->id("INIT")] = init.extract(0, 64);
+                z--;
+
+                NetInfo *dpo_high = create_internal_net(cell->name, "DPO_HIGH", false);
+                CellInfo *dp_high = create_dram_lut(cell->name.str(ctx) + "/DP.HIGH", base, cs,
+                                                    addressr_64, get_net_or_empty(cell, ctx->id("D")), dpo_high, z);
+                dpo_pre.push_back(dpo_high);
+                dp_high->params[ctx->id("INIT")] = init.extract(64, 64);
+                z--;
+
+                // create MUXF7 tree
+                create_muxf_tree(base, "SPO", spo_pre, addressw_high, spo, 2);
+                create_muxf_tree(base, "DPO", dpo_pre, addressr_high, dpo, 0);
+
+                packed_cells.insert(cell->name);
             }
-        } else if (cs.memtype == ctx->id("RAMS32")
-                || cs.memtype == ctx->id("RAMD32")
-                || cs.memtype == ctx->id("RAMS64E")
-                || cs.memtype == ctx->id("RAMD64E")
-                || cs.memtype == ctx->id("RAM32X1S")
-                || cs.memtype == ctx->id("RAM64X1S")
-                || cs.memtype == ctx->id("RAM128X1S")
-                || cs.memtype == ctx->id("RAM256X1S")) {
-            log_error("Cannot pack unsupported primitive: %s\n", cs.memtype.c_str(ctx));
         }
     }
     // Whole-SLICE DRAM

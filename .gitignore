@@ -39,3 +39,7 @@ install_manifest.txt
 *.bba
 __pycache__/
 *.pyc
+.cache
+.clangd
+.settings
+.vscode

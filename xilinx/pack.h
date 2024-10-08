@@ -44,7 +44,7 @@ struct XilinxPacker
         std::unordered_map<IdString, IdString> port_xform;
         std::unordered_map<IdString, std::vector<IdString>> port_multixform;
         std::unordered_map<IdString, IdString> param_xform;
-        std::vector<std::pair<IdString, std::string>> set_attrs;
+        std::vector<std::pair<IdString, Property>> set_attrs;
         std::vector<std::pair<IdString, Property>> set_params;
     };
 
@@ -120,6 +120,7 @@ struct XilinxPacker
     void pack_luts();
     void pack_ffs();
     void pack_lutffs();
+    void check_clock_inversion();
 
     bool is_constrained(const CellInfo *cell);
     void pack_muxfs();
@@ -225,6 +226,8 @@ struct XC7Packer : public XilinxPacker
     std::string get_ioctrl_site(const std::string &io_bel);
     std::string get_odelay_site(const std::string &io_bel);
     std::string get_idelay_site(const std::string &io_bel);
+
+    void update_usr_ibufdisable(Context *ctx,CellInfo *inbuf);
 
     // Call before packing constants
     void prepare_iologic();

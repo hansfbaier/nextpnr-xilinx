@@ -1336,6 +1336,53 @@ int Arch::getHclkForIoi(int ioi)
         return uh.tile;
     NPNR_ASSERT_FALSE("failed to find HCLK pips");
 }
+
+void Arch::bindBel(BelId bel, CellInfo *cell, PlaceStrength strength)
+    {
+        NPNR_ASSERT(bel != BelId());
+        NPNR_ASSERT(tileStatus[bel.tile].boundcells[bel.index] == nullptr);
+
+        tileStatus[bel.tile].boundcells[bel.index] = cell;
+        auto &bd = locInfo(bel).bel_data[bel.index];
+        int site = bd.site;
+        if (site >= 0 && site < int(tileStatus[bel.tile].sitevariant.size()))
+            tileStatus[bel.tile].sitevariant.at(site) = bd.site_variant;
+        cell->bel = bel;
+        cell->belStrength = strength;
+        refreshUiBel(bel);
+
+        updateTileClkStatus(bel.tile);
+
+        if (isLogicTile(bel))
+            updateLogicBel(bel, cell);
+        else if (isBRAMTile(bel))
+            updateBramBel(bel, cell);
+    }
+
+// adjust the tile's clk status according to the cell's clk status
+void Arch::updateTileClkStatus(int32_t tile_id) {
+    std::string tile_clk_status = "NONE"; 
+    // Find all cells that have been placed in the tile
+    for (auto boundcell : tileStatus[tile_id].boundcells) {
+        if (boundcell == nullptr)
+            continue;
+        std::string cell_clk_status = str_or_default(boundcell->attrs, id_CLK_STATUS, "NONE");
+        if (cell_clk_status == "NONE")
+            continue;
+        else if (tile_clk_status == "NONE") {
+            tile_clk_status = cell_clk_status;
+        }
+        else if(tile_clk_status != cell_clk_status)
+            log_error("tile clk status error\n");
+    }
+    if (tile_clk_status == "NONE")
+        tileStatus[tile_id].clk_status = ClkStatus::CLK_STATUS_NONE;
+    else if (tile_clk_status == "CLKINV")
+        tileStatus[tile_id].clk_status = ClkStatus::CLK_STATUS_CLKINV;
+    else
+        tileStatus[tile_id].clk_status = ClkStatus::CLK_STATUS_NOCLKINV;
+}
+
 namespace {
 template <typename Tres, typename Tgetter, typename Tkey>
 boost::optional<const Tres &> db_binary_search(const Tres *list, int count, Tgetter key_getter, Tkey key)
