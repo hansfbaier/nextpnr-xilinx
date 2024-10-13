@@ -651,10 +651,10 @@ void XilinxPacker::pack_dram()
 
                 if (cell->params.count(ctx->id("INIT"))) {
                     Property init = cell->params.at(ctx->id("INIT"));
-                    lut_d->params[ctx->id("INIT")] = init.extract(192, 64);
-                    lut_c->params[ctx->id("INIT")] = init.extract(128, 64);
-                    lut_b->params[ctx->id("INIT")] = init.extract(64, 64);
-                    lut_a->params[ctx->id("INIT")] = init.extract(0, 64);
+                    lut_a->params[ctx->id("INIT")] = init.extract(192, 64);
+                    lut_b->params[ctx->id("INIT")] = init.extract(128, 64);
+                    lut_c->params[ctx->id("INIT")] = init.extract(64, 64);
+                    lut_d->params[ctx->id("INIT")] = init.extract(0, 64);
                 }
                 // tree to select the correct DRAM LUT output
                 create_muxf_tree(lut_d, "O", dout_interm, addressw_high, dout, 0);
