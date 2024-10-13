@@ -205,7 +205,7 @@ void XilinxPacker::pack_dram()
             continue;
         auto &dt = dt_iter->second;
         for (int i = 0; i < std::min(dt.abits, 6); i++) {
-            IdString aport = ctx->id(dt.abits <= 6 ? ("A" + std::to_string(i)) : ("A[" + std::to_string(i) + "]"));
+            IdString aport = ctx->id(dt.abits <= (7 - (dt.rports > 0)) ? ("A" + std::to_string(i)) : ("A[" + std::to_string(i) + "]"));
             if (!ci->ports.count(aport))
                 continue;
             NetInfo *anet = get_net_or_empty(ci, aport);
@@ -247,7 +247,7 @@ void XilinxPacker::pack_dram()
         DRAMControlSet dcs;
         for (int i = 0; i < dt.abits; i++)
             dcs.wa.push_back(get_net_or_empty(
-                    ci, ctx->id(dt.abits <= 6 ? ("A" + std::to_string(i)) : ("A[" + std::to_string(i) + "]"))));
+                    ci, ctx->id(dt.abits <= (7 - (dt.rports > 0)) ? ("A" + std::to_string(i)) : ("A[" + std::to_string(i) + "]"))));
         if (dt.abits == 5) {
             dcs.wa.push_back(ctx->nets[ctx->id("$PACKER_VCC_NET")].get());
         }
