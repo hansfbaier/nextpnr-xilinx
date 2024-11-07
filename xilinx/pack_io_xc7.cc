@@ -820,30 +820,38 @@ void XC7Packer::pack_iologic()
             if (shiftin1 != nullptr && shiftin1->name == ctx->id("$PACKER_GND_NET")) disconnect_port(ctx, ci, ctx->id("SHIFTIN1"));
             NetInfo *shiftin2 = get_net_or_empty(ci, ctx->id("SHIFTIN2"));
             if (shiftin2 != nullptr && shiftin2->name == ctx->id("$PACKER_GND_NET")) disconnect_port(ctx, ci, ctx->id("SHIFTIN2"));
-
+            //
+            if(shiftin1 != nullptr || shiftin2 != nullptr){
+                if(shiftin1->driver.port != ctx->id("SHIFTOUT1") || shiftin2->driver.port != ctx->id("SHIFTOUT2")){
+                    log_error("%s '%s' has illegal fanout on SHIFTIN1 or SHIFTOUT2 \n", ci->type.c_str(ctx), ctx->nameOf(ci));
+                }
+            }
             // If this is tied to GND it's just unused. This does not have a route to GND anyway.
             NetInfo *tbytein = get_net_or_empty(ci, ctx->id("TBYTEIN"));
             if (tbytein != nullptr && tbytein->name == ctx->id("$PACKER_GND_NET")) disconnect_port(ctx, ci, ctx->id("TBYTEIN"));
-
-            NetInfo *q = get_net_or_empty(ci, ctx->id("OQ"));
-            NetInfo *ofb = get_net_or_empty(ci, ctx->id("OFB"));
-            bool q_disconnected = q == nullptr || q->users.empty();
-            bool ofb_disconnected = ofb == nullptr || ofb->users.empty();
-            if (q_disconnected && ofb_disconnected) {
-                log_error("%s '%s' has disconnected OQ/OFB output ports\n", ci->type.c_str(ctx), ctx->nameOf(ci));
-            }
-            BelId io_bel;
-            CellInfo *ob = !q_disconnected ? find_p_outbuf(q) : find_p_outbuf(ofb);
-            if (ob != nullptr) {
-                io_bel = ctx->getBelByName(ctx->id(ob->attrs.at(ctx->id("BEL")).as_string()));
-                std::string ol_site = get_ologic_site(ctx->getBelName(io_bel).str(ctx));
-                auto bel_name = ol_site + "/OSERDESE2";
-                ci->attrs[ctx->id("BEL")] = bel_name;
-                used_oserdes_bels.insert(ctx->getBelByName(ctx->id(bel_name)));
-            } else if (ofb->users.size() == 1 && ofb->users.at(0).cell->type == ctx->id("ISERDESE2")) {
-                unconstrained_oserdes.insert(ci);
-            } else {
-                log_error("%s '%s' has illegal fanout on OQ or OFB output\n", ci->type.c_str(ctx), ctx->nameOf(ci));
+            //
+            std::string serdes_mode = str_or_default(ci->params,ctx->id("SERDES_MODE"),"MASTER");
+            if(serdes_mode == "MASTER"){
+                NetInfo *q = get_net_or_empty(ci, ctx->id("OQ"));
+                NetInfo *ofb = get_net_or_empty(ci, ctx->id("OFB"));
+                bool q_disconnected = q == nullptr || q->users.empty();
+                bool ofb_disconnected = ofb == nullptr || ofb->users.empty();
+                if (q_disconnected && ofb_disconnected) {
+                    log_error("%s '%s' has disconnected OQ/OFB output ports\n", ci->type.c_str(ctx), ctx->nameOf(ci));
+                }
+                BelId io_bel;
+                CellInfo *ob = !q_disconnected ? find_p_outbuf(q) : find_p_outbuf(ofb);
+                if (ob != nullptr) {
+                    io_bel = ctx->getBelByName(ctx->id(ob->attrs.at(ctx->id("BEL")).as_string()));
+                    std::string ol_site = get_ologic_site(ctx->getBelName(io_bel).str(ctx));
+                    auto bel_name = ol_site + "/OSERDESE2";
+                    ci->attrs[ctx->id("BEL")] = bel_name;
+                    used_oserdes_bels.insert(ctx->getBelByName(ctx->id(bel_name)));
+                } else if (ofb->users.size() == 1 && ofb->users.at(0).cell->type == ctx->id("ISERDESE2")) {
+                    unconstrained_oserdes.insert(ci);
+                } else {
+                    log_error("%s '%s' has illegal fanout on OQ or OFB output\n", ci->type.c_str(ctx), ctx->nameOf(ci));
+                }
             }
         } else if (ci->type == ctx->id("IDDR")) {
             fold_inverter(ci, "C");
