@@ -249,9 +249,9 @@ struct XC7Packer : public XilinxPacker
     void pack_dsps();
 
     // High speed transceivers
-    std::string get_gtp_site(const std::string &io_bel);
-    void constrain_gtp(CellInfo *pad_cell, CellInfo *gtp_cell);
-    void constrain_ibufds_gtp_site(CellInfo *buf_cell, const std::string &io_bel);
+    std::string get_gt_site(const std::string &io_bel);
+    void constrain_gt(CellInfo *pad_cell, CellInfo *gt_cell);
+    void constrain_ibufds_gt_site(CellInfo *buf_cell, const std::string &io_bel);
     void constrain_bufhce_gtp_common(CellInfo *bufhce_cell, CellInfo *gtp_common);
     void pack_gt();
 

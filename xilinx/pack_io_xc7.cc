@@ -364,38 +364,40 @@ void XC7Packer::pack_io()
             continue;
 
         if (buf_cell->type == ctx->id("IBUFDS_GTE2")) {
-            constrain_ibufds_gtp_site(buf_cell, pad_cell->attrs[id_BEL].as_string());
+            constrain_ibufds_gt_site(buf_cell, pad_cell->attrs[id_BEL].as_string());
             auto net = buf_cell->ports[ctx->id("O")].net;
             if (net != nullptr && net->users.size() == 1) {
                 auto user_cell = net->users[0].cell;
-                if (user_cell->type != id_GTPE2_COMMON)
-                    log_error("IBUFDS_GTE2 instance %s output port must be connected to a GTPE2_COMMON instance, but is instead connected to an instance %s of type %s\n",
+                auto is_gtp = user_cell->type == id_GTPE2_COMMON;
+                auto is_gtx = user_cell->type == id_GTXE2_COMMON;
+                if (!(is_gtp || is_gtx))
+                    log_error("IBUFDS_GTE2 instance %s output port must be connected to a GTPE2_COMMON or GTXE2_COMMON instance, but is instead connected to an instance %s of type %s\n",
                         buf_cell->name.c_str(ctx), user_cell->name.c_str(ctx), user_cell->type.c_str(ctx));
-                constrain_gtp(pad_cell, user_cell);
+                constrain_gt(pad_cell, user_cell);
                 continue;
             } else log_error("IBUFDS_GTE2 instance %s output port is not connected, or connected to multiple cells\n", buf_cell->name.c_str(ctx));
         }
 
-        // This OBUF is integrated into the GTP channel pad and does not need placing
+        // This OBUF is integrated into the GTP/GTX channel pad and does not need placing
         if (buf_cell->type == ctx->id("OBUF")) {
             auto net = buf_cell->ports[ctx->id("I")].net;
             if (net != nullptr) {
                 auto driver_cell = net->driver.cell;
-                if (driver_cell != nullptr && driver_cell->type == ctx->id("GTPE2_CHANNEL")) {
+                if (driver_cell != nullptr && (driver_cell->type == id_GTPE2_CHANNEL || driver_cell->type == id_GTXE2_CHANNEL)) {
                     packed_cells.insert(buf_cell->name);
-                    constrain_gtp(pad_cell, driver_cell);
+                    constrain_gt(pad_cell, driver_cell);
                     continue;
                 }
             }
         }
-        // This IBUF is integrated into the GTP channel pad and does not need placing
+        // This IBUF is integrated into the GTP/GTX channel pad and does not need placing
         if (buf_cell->type == ctx->id("IBUF")) {
             auto net = buf_cell->ports[ctx->id("O")].net;
             if (net != nullptr && net->users.size() == 1) {
                 auto user_cell = net->users[0].cell;
-                if (user_cell->type == ctx->id("GTPE2_CHANNEL")) {
+                if (user_cell->type == id_GTPE2_CHANNEL || user_cell->type == id_GTXE2_CHANNEL) {
                     packed_cells.insert(buf_cell->name);
-                    constrain_gtp(pad_cell, user_cell);
+                    constrain_gt(pad_cell, user_cell);
                     continue;
                 }
             }
@@ -445,6 +447,7 @@ void XC7Packer::pack_io()
         CellInfo *ci = cell.second;
         // GTP bufs don't need transforming, they are hardwired
         if (boost::starts_with(ci->type.str(ctx), "GTP")) continue;
+        if (boost::starts_with(ci->type.str(ctx), "GTX")) continue;
         if (boost::starts_with(ci->type.str(ctx), "IBUFDS_GTE2")) continue;
         if (!ci->attrs.count(ctx->id("BEL")))
             continue;
