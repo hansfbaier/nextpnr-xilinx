@@ -2744,24 +2744,25 @@ void write_gtx_pll(CellInfo *ci)
 
         write_bit("QPLL_DMONITOR_SEL[0]", bool_or_default(ci->params, ctx->id("QPLL_DMONITOR_SEL")));
         
-        auto bias_cfg = int_or_default(ci->params, ctx->id("BIAS_CFG"), 0);
+        auto bias_cfg_found = ci->params.find(ctx->id("BIAS_CFG"));
+        auto bias_cfg = bias_cfg_found == ci->params.end() ? 0b1000000000000000000000000000001000000000000UL : bias_cfg_found->second.as_int64();
         write_int_vector("BIAS_CFG[63:0]", bias_cfg, 64);
         auto common_cfg = int_or_default(ci->params, ctx->id("COMMON_CFG"), 0);
         write_int_vector("COMMON_CFG[31:0]", common_cfg, 32);
 
         // according to ug476, these attributes contain magic undocumented and reserved wizard values
         // TODO: check values
-        write_int_vector("QPLL_CFG[26:0]", 0, 27);
+        write_int_vector("QPLL_CFG[26:0]", 0b11010000000000110000001, 27);
         write_int_vector("QPLL_CLKOUT_CFG[3:0]", 0, 4);
-        write_int_vector("QPLL_COARSE_FREQ_OVRD[4:0]", 0, 6);
+        write_int_vector("QPLL_COARSE_FREQ_OVRD[4:0]", 0b10000, 6);
         auto coarse_freq_ovrd_en = int_or_default(ci->params, ctx->id("QPLL_COARSE_FREQ_OVRD_EN"), 0);
         if (coarse_freq_ovrd_en > 0)
             log_warning("According to UG476, the QPLL_COARSE_FREQ_OVRD_EN attribute must be 0, but it is not. Be sure you know what you are doing.");
         write_bit("QPLL_COARSE_FREQ_OVRD_EN[0]", coarse_freq_ovrd_en >= 1);
-        write_int_vector("QPLL_INIT_CFG[23:0]", 0, 24);
-        write_int_vector("QPLL_LOCK_CFG[15:0]", 0, 16);
-        write_int_vector("QPLL_LPF[3:0]", 0, 4);
-        write_int_vector("QPLL_CP[9:0]", 0, 10);
+        write_int_vector("QPLL_INIT_CFG[23:0]", 0b110, 24);
+        write_int_vector("QPLL_LOCK_CFG[15:0]", 0b10000111101000, 16);
+        write_int_vector("QPLL_LPF[3:0]", 0b1111, 4);
+        write_int_vector("QPLL_CP[9:0]", 0b11111, 10);
         auto cp_monitor_en = int_or_default(ci->params, ctx->id("QPLL_CP_MONITOR_EN"), 0);
         if (cp_monitor_en > 0)
             log_warning("According to UG476, the QPLL_CP_MONITOR_EN attribute must be 0, but it is not. Be sure you know what you are doing.");
