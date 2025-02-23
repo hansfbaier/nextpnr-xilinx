@@ -852,9 +852,9 @@ void XC7Packer::pack_iologic()
                         auto driver = shiftin->driver.cell;
                         auto driver_mode = str_or_default(driver->params, ctx->id("SERDES_MODE"), "MASTER");
                         if (driver_mode != "SLAVE")
-                            log_error("%s '%s' can only be connected to the SHIFOUT port of another slave OSERDESE2, but is connected to this master: '%s'\n",
+                            log_error("%s '%s' can only be connected to the SHIFTOUT port of another slave OSERDESE2, but is connected to this master: '%s'\n",
                                       ci->type.c_str(ctx), ctx->nameOf(ci), driver->name.c_str(ctx));
-                        if (boost::starts_with(shiftin->driver.port.str(ctx), "SHIFTOUT")) {
+                        if (!boost::starts_with(shiftin->driver.port.str(ctx), "SHIFTOUT")) {
                             log_error("%s '%s' can only be connected to the SHIFTOUT port of another OSERDESE2, but is connected to port: '%s'\n",
                                       ci->type.c_str(ctx), ctx->nameOf(ci), shiftin->driver.port.c_str(ctx));
                         }
