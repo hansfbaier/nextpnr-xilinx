@@ -266,6 +266,9 @@ X(BUFCE_BUFCE)
 X(PS7)
 X(PS7_PS7)
 
+X(PCIE_2_1)
+X(PCIE_2_1_PCIE_2_1)
+
 X(0)
 X(1)
 X(A)
