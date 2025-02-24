@@ -928,20 +928,20 @@ void XC7Packer::pack_iologic()
                 iddr_rules[ctx->id("IDDR")].port_xform[ctx->id("R")] = ctx->id("SR");
             xform_cell(iddr_rules, ci);
 
-        } else if (ci->type == ctx->id("ISERDESE2")) {
+        } else if (ci->type == id_ISERDESE2) {
             fold_inverter(ci, "CLKB");
             fold_inverter(ci, "OCLKB");
 
-            bool ofb_used = str_or_default(ci->params, ctx->id("OFB_USED"), "FALSE") == "TRUE";
-            std::string iobdelay = str_or_default(ci->params, ctx->id("IOBDELAY"), "NONE");
+            bool ofb_used = str_or_default(ci->params, id_OFB_USED, "FALSE") == "TRUE";
+            std::string iobdelay = str_or_default(ci->params, id_IOBDELAY, "NONE");
 
             if (ofb_used) {
                 BelId bel;
-                NetInfo *d = get_net_or_empty(ci, ctx->id("OFB"));
+                NetInfo *d = get_net_or_empty(ci, id_OFB);
                 if (d == nullptr || d->driver.cell == nullptr)
                     log_error("%s '%s' has disconnected OFB input\n", ci->type.c_str(ctx), ctx->nameOf(ci));
                 CellInfo *drv = d->driver.cell;
-                if (boost::contains(drv->type.str(ctx), "OSERDESE2") && d->driver.port == ctx->id("OFB")) {
+                if (boost::contains(drv->type.str(ctx), "OSERDESE2") && d->driver.port == id_OFB) {
                     // We place this later, when we place the OSERDESE2, see below
                 } else
                     log_error("%s '%s' has OFB input connected to illegal cell type %s\n", ci->type.c_str(ctx),
@@ -949,23 +949,23 @@ void XC7Packer::pack_iologic()
             } else {
                 BelId io_bel;
                 if (iobdelay == "IFD") {
-                    NetInfo *d = get_net_or_empty(ci, ctx->id("DDLY"));
+                    NetInfo *d = get_net_or_empty(ci, id_DDLY);
                     if (d == nullptr || d->driver.cell == nullptr)
                         log_error("%s '%s' has disconnected DDLY input\n", ci->type.c_str(ctx), ctx->nameOf(ci));
                     CellInfo *drv = d->driver.cell;
-                    if (boost::contains(drv->type.str(ctx), "IDELAYE2") && d->driver.port == ctx->id("DATAOUT"))
+                    if (boost::contains(drv->type.str(ctx), "IDELAYE2") && d->driver.port == id_DATAOUT)
                         io_bel = iodelay_to_io.at(drv->name);
                     else
                         log_error("%s '%s' has DDLY input connected to illegal cell type %s\n", ci->type.c_str(ctx),
                                 ctx->nameOf(ci), drv->type.c_str(ctx));
                 } else if (iobdelay == "NONE") {
-                    NetInfo *d = get_net_or_empty(ci, ctx->id("D"));
+                    NetInfo *d = get_net_or_empty(ci, id_D);
                     if (d == nullptr || d->driver.cell == nullptr)
                         log_error("%s '%s' has disconnected D input\n", ci->type.c_str(ctx), ctx->nameOf(ci));
                     CellInfo *drv = d->driver.cell;
                     if (   boost::contains(drv->type.str(ctx), "INBUF_EN")
                         || boost::contains(drv->type.str(ctx), "INBUF_DCIEN"))
-                        io_bel = ctx->getBelByName(ctx->id(drv->attrs.at(ctx->id("BEL")).as_string()));
+                        io_bel = ctx->getBelByName(ctx->id(drv->attrs.at(id_BEL).as_string()));
                     else
                         log_error("%s '%s' has D input connected to illegal cell type %s\n", ci->type.c_str(ctx),
                                 ctx->nameOf(ci), drv->type.c_str(ctx));
@@ -975,7 +975,7 @@ void XC7Packer::pack_iologic()
                 }
 
                 std::string iol_site = get_ilogic_site(ctx->getBelName(io_bel).str(ctx));
-                ci->attrs[ctx->id("BEL")] = iol_site + "/ISERDESE2";
+                ci->attrs[id_BEL] = iol_site + "/ISERDESE2";
             }
         }
 
@@ -985,9 +985,8 @@ void XC7Packer::pack_iologic()
 
     // place OSERDESE2 which are not connected to an output, but to another ISERDESE2 via OFB
     std::queue<BelId> available_oserdes_bels;
-    IdString oserdes_id = ctx->id("OSERDESE2_OSERDESE2");
     for (auto bel : ctx->getBels()) {
-        if (ctx->getBelType(bel) != oserdes_id)
+        if (ctx->getBelType(bel) != id_OSERDESE2_OSERDESE2)
             continue;
         if (used_oserdes_bels.count(bel))
             continue;
@@ -1002,17 +1001,17 @@ void XC7Packer::pack_iologic()
                 unconstr_oserdes);
         }
         auto oserdes_bel_name = std::string(ctx->nameOfBel(available_oserdes_bels.front()));
-        ci->attrs[ctx->id("BEL")] = oserdes_bel_name;
+        ci->attrs[id_BEL] = oserdes_bel_name;
 
-        NetInfo *d = get_net_or_empty(ci, ctx->id("OFB"));
+        NetInfo *d = get_net_or_empty(ci, id_OFB);
         NPNR_ASSERT_MSG(d != nullptr, "Only OSERDESE2 with connected OFB should be unconstrained at this point");
         NPNR_ASSERT_MSG(d->users.size() == 1, "OSERDESE2 OFB can only be connected to one cell");
         auto iserdes = d->users.at(0).cell;
         std::string iserdes_bel_name = oserdes_bel_name;
         boost::replace_all(iserdes_bel_name, "OLOGIC", "ILOGIC");
         boost::replace_all(iserdes_bel_name, "OSERDES", "ISERDES");
-        NPNR_ASSERT_MSG(iserdes->attrs.count(ctx->id("BEL"))  == 0, "ISERDESE2 which is connected to OFB of OSERDESE2 already placed");
-        iserdes->attrs[ctx->id("BEL")] = iserdes_bel_name;
+        NPNR_ASSERT_MSG(iserdes->attrs.count(id_BEL)  == 0, "ISERDESE2 which is connected to OFB of OSERDESE2 already placed");
+        iserdes->attrs[id_BEL] = iserdes_bel_name;
         available_oserdes_bels.pop();
     }
 
