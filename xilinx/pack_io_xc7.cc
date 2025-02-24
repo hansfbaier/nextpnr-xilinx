@@ -949,6 +949,11 @@ void XC7Packer::pack_iologic()
             } else {
                 BelId io_bel;
                 if (iobdelay == "IFD") {
+                    // disconnect constant D/SHIFTIN1/2 ports, if DDLY is used, as vivado does
+                    disconnect_constant_port(ci, id_D);
+                    disconnect_constant_port(ci, ctx->id("SHIFTIN1"));
+                    disconnect_constant_port(ci, ctx->id("SHIFTIN2"));
+
                     NetInfo *d = get_net_or_empty(ci, id_DDLY);
                     if (d == nullptr || d->driver.cell == nullptr)
                         log_error("%s '%s' has disconnected DDLY input\n", ci->type.c_str(ctx), ctx->nameOf(ci));
