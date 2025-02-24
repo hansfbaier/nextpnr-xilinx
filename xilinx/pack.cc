@@ -574,6 +574,15 @@ void XilinxPacker::tie_port(CellInfo *ci, const std::string &port, bool value, b
         ci->params[ctx->id("IS_" + port + "_INVERTED")] = Property(1);
 }
 
+void XilinxPacker::disconnect_constant_port(CellInfo *ci, IdString port)
+{
+    auto net = get_net_or_empty(ci, port);
+    if (net == nullptr) return;
+    if (net->name == ctx->id("$PACKER_GND_NET") || net->name == ctx->id("$PACKER_VCC_NET")) {
+        disconnect_port(ctx, ci, port);
+    }
+}
+
 void USPacker::pack_bram()
 {
     log_info("Packing BRAM..\n");

@@ -978,6 +978,9 @@ void XC7Packer::pack_iologic()
                 ci->attrs[ctx->id("BEL")] = iol_site + "/ISERDESE2";
             }
         }
+
+        // disconnect some ports that vivado also disconnects when wired to constant
+        disconnect_constant_port(ci, id_CLKDIVP);
     }
 
     // place OSERDESE2 which are not connected to an output, but to another ISERDESE2 via OFB

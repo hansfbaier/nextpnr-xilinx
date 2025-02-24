@@ -145,6 +145,7 @@ struct XilinxPacker
     std::unordered_map<IdString, std::unordered_map<IdString, bool>> tied_pins;
     std::unordered_map<IdString, std::unordered_set<IdString>> invertible_pins;
     void pack_constants();
+    void disconnect_constant_port(CellInfo *ci,IdString port);
 
     // IO
     std::unordered_map<IdString, std::unordered_set<IdString>> toplevel_ports;
