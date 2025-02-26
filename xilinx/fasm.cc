@@ -2754,7 +2754,7 @@ void write_gtx_pll(CellInfo *ci)
         // TODO: check values
         write_int_vector("QPLL_CFG[26:0]", 0b11010000000000110000001, 27);
         write_int_vector("QPLL_CLKOUT_CFG[3:0]", 0, 4);
-        write_int_vector("QPLL_COARSE_FREQ_OVRD[4:0]", 0b10000, 6);
+        write_int_vector("QPLL_COARSE_FREQ_OVRD[5:0]", 0b10000, 6);
         auto coarse_freq_ovrd_en = int_or_default(ci->params, ctx->id("QPLL_COARSE_FREQ_OVRD_EN"), 0);
         if (coarse_freq_ovrd_en > 0)
             log_warning("According to UG476, the QPLL_COARSE_FREQ_OVRD_EN attribute must be 0, but it is not. Be sure you know what you are doing.");
