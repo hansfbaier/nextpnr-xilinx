@@ -2089,8 +2089,8 @@ struct FasmBackend
             write_int_vector("COMMON_CFG[31:0]", common_cfg, 32);
 
             // according to ug482, these attributes contain magic undocumented and reserved wizard values
-            write_int_vector("PLL0_CFG[20:0]", 0b111110000001111011100, 21);
-            write_int_vector("PLL1_CFG[20:0]", 0b111110000001111011100, 21);
+            write_int_vector("PLL0_CFG[26:0]", 0b111110000001111011100, 27);
+            write_int_vector("PLL1_CFG[26:0]", 0b111110000001111011100, 27);
             write_int_vector("PLL0_INIT_CFG[4:0]", 0b11110, 5);
             write_int_vector("PLL1_INIT_CFG[4:0]", 0b11110, 5);
             write_int_vector("PLL0_LOCK_CFG[8:0]", 0b111101000, 9);
@@ -2292,6 +2292,8 @@ struct FasmBackend
         write_int_vector("ES_CONTROL[5:0]", es_control, 6);
         write_str_bool("ES_ERRDET_EN", "ES_ERRDET_EN");
         write_str_bool("ES_EYE_SCAN_EN", "ES_EYE_SCAN_EN");
+        auto es_horz_offset = int_or_default(ci->params, ctx->id("ES_HORZ_OFFSET"), 0x010);
+        write_int_vector("ES_HORZ_OFFSET[11:0]", es_horz_offset, 12);
         auto es_pma_cfg = int_or_default(ci->params, ctx->id("ES_PMA_CFG"), 0);
         write_int_vector("ES_PMA_CFG[9:0]", es_pma_cfg, 10);
         auto es_prescale = int_or_default(ci->params, ctx->id("ES_PRESCALE"), 0);
@@ -2337,8 +2339,8 @@ struct FasmBackend
 
         write_str_bool("PCS_PCIE_EN", "PCS_PCIE_EN");
 
-        auto rsvd_attr = int_or_default(ci->params, ctx->id("RSVD_ATTR"), 0);
-        write_int_vector("RSVD_ATTR[47:0]", rsvd_attr, 48);
+        auto rsvd_attr = int_or_default(ci->params, ctx->id("PCS_RSVD_ATTR"), 0);
+        write_int_vector("PCS_RSVD_ATTR[47:0]", rsvd_attr, 48);
 
         auto pd_trans_time_from_p2 = int_or_default(ci->params, ctx->id("PD_TRANS_TIME_FROM_P2"), 0);
         write_int_vector("PD_TRANS_TIME_FROM_P2[11:0]", pd_trans_time_from_p2, 12);
@@ -2611,7 +2613,7 @@ struct FasmBackend
         auto tx_eidle_deassert_delay = int_or_default(ci->params, ctx->id("TX_EIDLE_DEASSERT_DELAY"), 0);
         write_int_vector("TX_EIDLE_DEASSERT_DELAY[2:0]", tx_eidle_deassert_delay, 3);
 
-        write_str_bool("LOOPBACK_DRIVE_HIZ", "LOOPBACK_DRIVE_HIZ");
+        write_str_bool("TX_LOOPBACK_DRIVE_HIZ", "TX_LOOPBACK_DRIVE_HIZ");
 
         auto tx_maincursor_sel = bool_or_default(ci->params, ctx->id("TX_MAINCURSOR_SEL"), false);
         write_bit("TX_MAINCURSOR_SEL[0]", tx_maincursor_sel);
@@ -2716,6 +2718,648 @@ struct FasmBackend
         write_bit("USE_PCS_CLK_PHASE_SEL[0]", use_pcs_clk_phase_sel);
 
         pop(); // GTPE2_CHANNEL
+        pop(); // tile name
+    }
+
+    void write_pcie_2_1(CellInfo *ci)
+    {
+        push(get_tile_name(ci->bel.tile));
+        push("PCIE_2_1");
+
+        auto write_str_bool = [&](std::string attribute, std::string deflt = "FALSE") {
+            auto val = str_or_default(ci->params, ctx->id(attribute), deflt);
+            boost::algorithm::to_upper(val);
+            write_bit(attribute, val == "TRUE");
+        };
+
+        // PG054, page 145
+        auto aer_base_ptr = int_or_default(ci->params, ctx->id("AER_BASE_PTR"), 0x140);
+        write_int_vector("AER_BASE_PTR[11:0]", aer_base_ptr, 12);
+
+        write_str_bool("AER_CAP_ECRC_CHECK_CAPABLE");
+        write_str_bool("DEV_CAP_ROLE_BASED_ERROR", "TRUE");
+        write_str_bool("LINK_CAP_SURPRISE_DOWN_ERROR_CAPABLE");
+        write_str_bool("AER_CAP_ECRC_GEN_CAPABLE");
+
+        auto aer_cap_id = int_or_default(ci->params, ctx->id("AER_CAP_ID"), 0x1);
+        write_int_vector("AER_CAP_ID[15:0]", aer_cap_id, 16);
+
+        write_str_bool("AER_CAP_MULTIHEADER");
+
+        auto aer_cap_nextptr = int_or_default(ci->params, ctx->id("AER_CAP_NEXTPTR"), 0x178);
+        write_int_vector("AER_CAP_NEXTPTR[11:0]", aer_cap_nextptr, 12);
+
+        write_str_bool("AER_CAP_ON");
+
+        auto aer_cap_optional_err_support = int_or_default(ci->params, ctx->id("AER_CAP_OPTIONAL_ERR_SUPPORT"), 0x0);
+        write_int_vector("AER_CAP_OPTIONAL_ERR_SUPPORT[23:0]", aer_cap_optional_err_support, 24);
+
+        write_str_bool("AER_CAP_PERMIT_ROOTERR_UPDATE", "TRUE");
+
+        auto aer_cap_version = int_or_default(ci->params, ctx->id("AER_CAP_VERSION"), 0x1);
+        write_int_vector("AER_CAP_VERSION[3:0]", aer_cap_version, 4);
+
+        write_str_bool("ALLOW_X8_GEN2");
+
+        auto bar0 = int_or_default(ci->params, ctx->id("BAR0"), 0xFFFFFF00);
+        write_int_vector("BAR0[31:0]", bar0, 32);
+
+        auto bar1 = int_or_default(ci->params, ctx->id("BAR1"), 0xFFFF0000);
+        write_int_vector("BAR1[31:0]", bar1, 32);
+
+        auto bar2 = int_or_default(ci->params, ctx->id("BAR2"), 0xFFFF000C);
+        write_int_vector("BAR2[31:0]", bar2, 32);
+
+        auto bar3 = int_or_default(ci->params, ctx->id("BAR3"), 0xFFFFFFFF);
+        write_int_vector("BAR3[31:0]", bar3, 32);
+
+        auto bar4 = int_or_default(ci->params, ctx->id("BAR4"), 0x0);
+        write_int_vector("BAR4[31:0]", bar4, 32);
+
+        auto bar5 = int_or_default(ci->params, ctx->id("BAR5"), 0x0);
+        write_int_vector("BAR5[31:0]", bar5, 32);
+
+        auto capabilities_ptr = int_or_default(ci->params, ctx->id("CAPABILITIES_PTR"), 0x40);
+        write_int_vector("CAPABILITIES_PTR[7:0]", capabilities_ptr, 8);
+
+        auto cardbus_cis_pointer = int_or_default(ci->params, ctx->id("CARDBUS_CIS_POINTER"), 0x0);
+        write_int_vector("CARDBUS_CIS_POINTER[31:0]", cardbus_cis_pointer, 32);
+
+        auto class_code = int_or_default(ci->params, ctx->id("CLASS_CODE"), 0x0);
+        write_int_vector("CLASS_CODE[23:0]", class_code, 24);
+
+        auto cfg_ecrc_err_cplstat = int_or_default(ci->params, ctx->id("CFG_ECRC_ERR_CPLSTAT"), 0);
+        write_int_vector("CFG_ECRC_ERR_CPLSTAT[1:0]", cfg_ecrc_err_cplstat, 2);
+
+        write_str_bool("CMD_INTX_IMPLEMENTED", "TRUE");
+        write_str_bool("CPL_TIMEOUT_DISABLE_SUPPORTED");
+
+        auto cpl_timeout_ranges_supported = int_or_default(ci->params, ctx->id("CPL_TIMEOUT_RANGES_SUPPORTED"), 0x0);
+        write_int_vector("CPL_TIMEOUT_RANGES_SUPPORTED[3:0]", cpl_timeout_ranges_supported, 4);
+
+        auto crm_module_rsts = int_or_default(ci->params, ctx->id("CRM_MODULE_RSTS"), 0x0);
+        write_int_vector("CRM_MODULE_RSTS[6:0]", crm_module_rsts, 7);
+
+        write_str_bool("DEV_CAP2_ARI_FORWARDING_SUPPORTED");
+        write_str_bool("DEV_CAP2_ATOMICOP32_COMPLETER_SUPPORTED");
+        write_str_bool("DEV_CAP2_ATOMICOP64_COMPLETER_SUPPORTED");
+        write_str_bool("DEV_CAP2_ATOMICOP_ROUTING_SUPPORTED");
+        write_str_bool("DEV_CAP2_CAS128_COMPLETER_SUPPORTED");
+        write_str_bool("DEV_CAP2_ENDEND_TLP_PREFIX_SUPPORTED");
+        write_str_bool("DEV_CAP2_EXTENDED_FMT_FIELD_SUPPORTED");
+        write_str_bool("DEV_CAP2_LTR_MECHANISM_SUPPORTED");
+
+        auto dev_cap2_max_endend_tlp_prefixes = int_or_default(ci->params, ctx->id("DEV_CAP2_MAX_ENDEND_TLP_PREFIXES"), 0x0);
+        write_int_vector("DEV_CAP2_MAX_ENDEND_TLP_PREFIXES[1:0]", dev_cap2_max_endend_tlp_prefixes, 2);
+
+        write_str_bool("DEV_CAP2_NO_RO_ENABLED_PRPR_PASSING");
+
+        auto dev_cap2_tph_completer_supported = int_or_default(ci->params, ctx->id("DEV_CAP2_TPH_COMPLETER_SUPPORTED"), 0x0);
+        write_int_vector("DEV_CAP2_TPH_COMPLETER_SUPPORTED[1:0]", dev_cap2_tph_completer_supported, 2);
+
+        write_str_bool("DEV_CAP_ENABLE_SLOT_PWR_LIMIT_SCALE", "TRUE");
+        write_str_bool("DEV_CAP_ENABLE_SLOT_PWR_LIMIT_VALUE", "TRUE");
+
+        auto dev_cap_endpoint_l0s_latency = int_or_default(ci->params, ctx->id("DEV_CAP_ENDPOINT_L0S_LATENCY"), 0);
+        write_int_vector("DEV_CAP_ENDPOINT_L0S_LATENCY[2:0]", dev_cap_endpoint_l0s_latency, 3);
+
+        auto dev_cap_endpoint_l1_latency = int_or_default(ci->params, ctx->id("DEV_CAP_ENDPOINT_L1_LATENCY"), 0);
+        write_int_vector("DEV_CAP_ENDPOINT_L1_LATENCY[2:0]", dev_cap_endpoint_l1_latency, 3);
+
+        write_str_bool("DEV_CAP_EXT_TAG_SUPPORTED", "TRUE");
+        write_str_bool("DEV_CAP_FUNCTION_LEVEL_RESET_CAPABLE");
+
+        auto dev_cap_max_payload_supported = int_or_default(ci->params, ctx->id("DEV_CAP_MAX_PAYLOAD_SUPPORTED"), 2);
+        write_int_vector("DEV_CAP_MAX_PAYLOAD_SUPPORTED[2:0]", dev_cap_max_payload_supported, 3);
+
+        auto dev_cap_phantom_functions_support = int_or_default(ci->params, ctx->id("DEV_CAP_PHANTOM_FUNCTIONS_SUPPORT"), 0);
+        write_int_vector("DEV_CAP_PHANTOM_FUNCTIONS_SUPPORT[1:0]", dev_cap_phantom_functions_support, 2);
+
+        auto dev_cap_rsvd_14_12 = int_or_default(ci->params, ctx->id("DEV_CAP_RSVD_14_12"), 0);
+        write_int_vector("DEV_CAP_RSVD_14_12[2:0]", dev_cap_rsvd_14_12, 3);
+
+        auto dev_cap_rsvd_17_16 = int_or_default(ci->params, ctx->id("DEV_CAP_RSVD_17_16"), 0);
+        write_int_vector("DEV_CAP_RSVD_17_16[1:0]", dev_cap_rsvd_17_16, 2);
+
+        auto dev_cap_rsvd_31_29 = int_or_default(ci->params, ctx->id("DEV_CAP_RSVD_31_29"), 0);
+        write_int_vector("DEV_CAP_RSVD_31_29[2:0]", dev_cap_rsvd_31_29, 3);
+
+        write_str_bool("DEV_CONTROL_AUX_POWER_SUPPORTED");
+        write_str_bool("DEV_CONTROL_EXT_TAG_DEFAULT");
+        write_str_bool("DISABLE_ASPM_L1_TIMER");
+        write_str_bool("DISABLE_BAR_FILTERING");
+        write_str_bool("DISABLE_ERR_MSG");
+        write_str_bool("DISABLE_ID_CHECK");
+        write_str_bool("DISABLE_LANE_REVERSAL");
+        write_str_bool("DISABLE_LOCKED_FILTER");
+        write_str_bool("DISABLE_PPM_FILTER");
+        write_str_bool("DISABLE_RX_POISONED_RESP");
+        write_str_bool("DISABLE_RX_TC_FILTER");
+        write_str_bool("DISABLE_SCRAMBLING");
+
+        auto dnstream_link_num = int_or_default(ci->params, ctx->id("DNSTREAM_LINK_NUM"), 0x0);
+        write_int_vector("DNSTREAM_LINK_NUM[7:0]", dnstream_link_num, 8);
+
+        auto dsn_base_ptr = int_or_default(ci->params, ctx->id("DSN_BASE_PTR"), 0x100);
+        write_int_vector("DSN_BASE_PTR[11:0]", dsn_base_ptr, 12);
+
+        auto dsn_cap_id = int_or_default(ci->params, ctx->id("DSN_CAP_ID"), 0x3);
+        write_int_vector("DSN_CAP_ID[15:0]", dsn_cap_id, 16);
+
+        auto dsn_cap_nextptr = int_or_default(ci->params, ctx->id("DSN_CAP_NEXTPTR"), 0x10C);
+        write_int_vector("DSN_CAP_NEXTPTR[11:0]", dsn_cap_nextptr, 12);
+
+        write_str_bool("DSN_CAP_ON", "TRUE");
+
+        auto dsn_cap_version = int_or_default(ci->params, ctx->id("DSN_CAP_VERSION"), 0x1);
+        write_int_vector("DSN_CAP_VERSION[3:0]", dsn_cap_version, 4);
+
+        auto enable_msg_route = int_or_default(ci->params, ctx->id("ENABLE_MSG_ROUTE"), 0x0);
+        write_int_vector("ENABLE_MSG_ROUTE[10:0]", enable_msg_route, 11);
+
+        write_str_bool("ENABLE_RX_TD_ECRC_TRIM");
+        write_str_bool("ENDEND_TLP_PREFIX_FORWARDING_SUPPORTED");
+        write_str_bool("ENTER_RVRY_EI_L0", "TRUE");
+        write_str_bool("EXIT_LOOPBACK_ON_EI", "TRUE");
+
+        auto expansion_rom = int_or_default(ci->params, ctx->id("EXPANSION_ROM"), 0xFFFFF001);
+        write_int_vector("EXPANSION_ROM[31:0]", expansion_rom, 32);
+
+        auto ext_cfg_cap_ptr = int_or_default(ci->params, ctx->id("EXT_CFG_CAP_PTR"), 0x3F);
+        write_int_vector("EXT_CFG_CAP_PTR[5:0]", ext_cfg_cap_ptr, 6);
+
+        auto ext_cfg_xp_cap_ptr = int_or_default(ci->params, ctx->id("EXT_CFG_XP_CAP_PTR"), 0x3FF);
+        write_int_vector("EXT_CFG_XP_CAP_PTR[9:0]", ext_cfg_xp_cap_ptr, 10);
+
+        auto header_type = int_or_default(ci->params, ctx->id("HEADER_TYPE"), 0x0);
+        write_int_vector("HEADER_TYPE[7:0]", header_type, 8);
+
+        auto infer_ei = int_or_default(ci->params, ctx->id("INFER_EI"), 0x0);
+        write_int_vector("INFER_EI[4:0]", infer_ei, 5);
+
+        auto interrupt_pin = int_or_default(ci->params, ctx->id("INTERRUPT_PIN"), 0x1);
+        write_int_vector("INTERRUPT_PIN[7:0]", interrupt_pin, 8);
+
+        write_str_bool("INTERRUPT_STAT_AUTO", "TRUE");
+        write_str_bool("IS_SWITCH");
+
+        auto last_config_dword = int_or_default(ci->params, ctx->id("LAST_CONFIG_DWORD"), 0x3FF);
+        write_int_vector("LAST_CONFIG_DWORD[9:0]", last_config_dword, 10);
+
+        write_str_bool("LINK_CAP_ASPM_OPTIONALITY", "TRUE");
+
+        auto link_cap_aspm_support = int_or_default(ci->params, ctx->id("LINK_CAP_ASPM_SUPPORT"), 1);
+        write_int_vector("LINK_CAP_ASPM_SUPPORT[1:0]", link_cap_aspm_support, 2);
+
+        write_str_bool("LINK_CAP_CLOCK_POWER_MANAGEMENT");
+        write_str_bool("LINK_CAP_DLL_LINK_ACTIVE_REPORTING_CAP");
+
+        auto link_cap_l0s_exit_latency_comclk_gen1 = int_or_default(ci->params, ctx->id("LINK_CAP_L0S_EXIT_LATENCY_COMCLK_GEN1"), 7);
+        write_int_vector("LINK_CAP_L0S_EXIT_LATENCY_COMCLK_GEN1[2:0]", link_cap_l0s_exit_latency_comclk_gen1, 3);
+
+        auto link_cap_l0s_exit_latency_comclk_gen2 = int_or_default(ci->params, ctx->id("LINK_CAP_L0S_EXIT_LATENCY_COMCLK_GEN2"), 7);
+        write_int_vector("LINK_CAP_L0S_EXIT_LATENCY_COMCLK_GEN2[2:0]", link_cap_l0s_exit_latency_comclk_gen2, 3);
+
+        auto link_cap_l0s_exit_latency_gen1 = int_or_default(ci->params, ctx->id("LINK_CAP_L0S_EXIT_LATENCY_GEN1"), 7);
+        write_int_vector("LINK_CAP_L0S_EXIT_LATENCY_GEN1[2:0]", link_cap_l0s_exit_latency_gen1, 3);
+
+        auto link_cap_l0s_exit_latency_gen2 = int_or_default(ci->params, ctx->id("LINK_CAP_L0S_EXIT_LATENCY_GEN2"), 7);
+        write_int_vector("LINK_CAP_L0S_EXIT_LATENCY_GEN2[2:0]", link_cap_l0s_exit_latency_gen2, 3);
+
+        auto link_cap_l1_exit_latency_comclk_gen1 = int_or_default(ci->params, ctx->id("LINK_CAP_L1_EXIT_LATENCY_COMCLK_GEN1"), 7);
+        write_int_vector("LINK_CAP_L1_EXIT_LATENCY_COMCLK_GEN1[2:0]", link_cap_l1_exit_latency_comclk_gen1, 3);
+
+        auto link_cap_l1_exit_latency_comclk_gen2 = int_or_default(ci->params, ctx->id("LINK_CAP_L1_EXIT_LATENCY_COMCLK_GEN2"), 7);
+        write_int_vector("LINK_CAP_L1_EXIT_LATENCY_COMCLK_GEN2[2:0]", link_cap_l1_exit_latency_comclk_gen2, 3);
+
+        auto link_cap_l1_exit_latency_gen1 = int_or_default(ci->params, ctx->id("LINK_CAP_L1_EXIT_LATENCY_GEN1"), 7);
+        write_int_vector("LINK_CAP_L1_EXIT_LATENCY_GEN1[2:0]", link_cap_l1_exit_latency_gen1, 3);
+
+        auto link_cap_l1_exit_latency_gen2 = int_or_default(ci->params, ctx->id("LINK_CAP_L1_EXIT_LATENCY_GEN2"), 7);
+        write_int_vector("LINK_CAP_L1_EXIT_LATENCY_GEN2[2:0]", link_cap_l1_exit_latency_gen2, 3);
+
+        write_str_bool("LINK_CAP_LINK_BANDWIDTH_NOTIFICATION_CAP");
+
+        auto link_cap_max_link_speed = int_or_default(ci->params, ctx->id("LINK_CAP_MAX_LINK_SPEED"), 0x1);
+        write_int_vector("LINK_CAP_MAX_LINK_SPEED[3:0]", link_cap_max_link_speed, 4);
+
+        auto link_cap_max_link_width = int_or_default(ci->params, ctx->id("LINK_CAP_MAX_LINK_WIDTH"), 0x8);
+        write_int_vector("LINK_CAP_MAX_LINK_WIDTH[5:0]", link_cap_max_link_width, 6);
+
+        auto link_cap_rsvd_23 = int_or_default(ci->params, ctx->id("LINK_CAP_RSVD_23"), 0);
+        write_int_vector("LINK_CAP_RSVD_23[15:0]", link_cap_rsvd_23, 16);
+
+        auto link_control_rcb = int_or_default(ci->params, ctx->id("LINK_CONTROL_RCB"), 0);
+        write_int_vector("LINK_CONTROL_RCB[1:0]", link_control_rcb, 2);
+
+        write_str_bool("LINK_CTRL2_DEEMPHASIS");
+        write_str_bool("LINK_CTRL2_HW_AUTONOMOUS_SPEED_DISABLE");
+
+        auto link_ctrl2_target_link_speed = int_or_default(ci->params, ctx->id("LINK_CTRL2_TARGET_LINK_SPEED"), 0x2);
+        write_int_vector("LINK_CTRL2_TARGET_LINK_SPEED[3:0]", link_ctrl2_target_link_speed, 4);
+
+        write_str_bool("LINK_STATUS_SLOT_CLOCK_CONFIG", "TRUE");
+
+        auto ll_ack_timeout = int_or_default(ci->params, ctx->id("LL_ACK_TIMEOUT"), 0x0);
+        write_int_vector("LL_ACK_TIMEOUT[14:0]", ll_ack_timeout, 15);
+
+        write_str_bool("LL_ACK_TIMEOUT_EN");
+
+        auto ll_ack_timeout_func = int_or_default(ci->params, ctx->id("LL_ACK_TIMEOUT_FUNC"), 0);
+        write_int_vector("LL_ACK_TIMEOUT_FUNC[1:0]", ll_ack_timeout_func, 2);
+
+        auto ll_replay_timeout = int_or_default(ci->params, ctx->id("LL_REPLAY_TIMEOUT"), 0x0);
+        write_int_vector("LL_REPLAY_TIMEOUT[14:0]", ll_replay_timeout, 15);
+
+        write_str_bool("LL_REPLAY_TIMEOUT_EN");
+
+        auto ll_replay_timeout_func = int_or_default(ci->params, ctx->id("LL_REPLAY_TIMEOUT_FUNC"), 0);
+        write_int_vector("LL_REPLAY_TIMEOUT_FUNC[1:0]", ll_replay_timeout_func, 2);
+
+        auto ltssm_max_link_width = int_or_default(ci->params, ctx->id("LTSSM_MAX_LINK_WIDTH"), 0x1);
+        write_int_vector("LTSSM_MAX_LINK_WIDTH[5:0]", ltssm_max_link_width, 6);
+
+        write_str_bool("MPS_FORCE");
+
+        auto msix_base_ptr = int_or_default(ci->params, ctx->id("MSIX_BASE_PTR"), 0x9C);
+        write_int_vector("MSIX_BASE_PTR[7:0]", msix_base_ptr, 8);
+
+        auto msix_cap_id = int_or_default(ci->params, ctx->id("MSIX_CAP_ID"), 0x11);
+        write_int_vector("MSIX_CAP_ID[7:0]", msix_cap_id, 8);
+
+        auto msix_cap_nextptr = int_or_default(ci->params, ctx->id("MSIX_CAP_NEXTPTR"), 0x0);
+        write_int_vector("MSIX_CAP_NEXTPTR[7:0]", msix_cap_nextptr, 8);
+
+        write_str_bool("MSIX_CAP_ON");
+
+        auto msix_cap_pba_bir = int_or_default(ci->params, ctx->id("MSIX_CAP_PBA_BIR"), 0);
+        write_int_vector("MSIX_CAP_PBA_BIR[2:0]", msix_cap_pba_bir, 3);
+
+        auto msix_cap_pba_offset = int_or_default(ci->params, ctx->id("MSIX_CAP_PBA_OFFSET"), 0x50);
+        write_int_vector("MSIX_CAP_PBA_OFFSET[28:0]", msix_cap_pba_offset, 29);
+
+        auto msix_cap_table_bir = int_or_default(ci->params, ctx->id("MSIX_CAP_TABLE_BIR"), 0);
+        write_int_vector("MSIX_CAP_TABLE_BIR[2:0]", msix_cap_table_bir, 3);
+
+        auto msix_cap_table_offset = int_or_default(ci->params, ctx->id("MSIX_CAP_TABLE_OFFSET"), 0x40);
+        write_int_vector("MSIX_CAP_TABLE_OFFSET[28:0]", msix_cap_table_offset, 29);
+
+        auto msix_cap_table_size = int_or_default(ci->params, ctx->id("MSIX_CAP_TABLE_SIZE"), 0x0);
+        write_int_vector("MSIX_CAP_TABLE_SIZE[10:0]", msix_cap_table_size, 11);
+
+        auto msi_base_ptr = int_or_default(ci->params, ctx->id("MSI_BASE_PTR"), 0x48);
+        write_int_vector("MSI_BASE_PTR[7:0]", msi_base_ptr, 8);
+
+        write_str_bool("MSI_CAP_64_BIT_ADDR_CAPABLE", "TRUE");
+
+        auto msi_cap_id = int_or_default(ci->params, ctx->id("MSI_CAP_ID"), 0x5);
+        write_int_vector("MSI_CAP_ID[7:0]", msi_cap_id, 8);
+
+        auto msi_cap_multimsgcap = int_or_default(ci->params, ctx->id("MSI_CAP_MULTIMSGCAP"), 0);
+        write_int_vector("MSI_CAP_MULTIMSGCAP[2:0]", msi_cap_multimsgcap, 3);
+
+        auto msi_cap_multimsg_extension = int_or_default(ci->params, ctx->id("MSI_CAP_MULTIMSG_EXTENSION"), 0);
+        write_int_vector("MSI_CAP_MULTIMSG_EXTENSION[8:0]", msi_cap_multimsg_extension, 9);
+
+        auto msi_cap_nextptr = int_or_default(ci->params, ctx->id("MSI_CAP_NEXTPTR"), 0x60);
+        write_int_vector("MSI_CAP_NEXTPTR[7:0]", msi_cap_nextptr, 8);
+
+        write_str_bool("MSI_CAP_ON");
+        write_str_bool("MSI_CAP_PER_VECTOR_MASKING_CAPABLE", "TRUE");
+
+        auto n_fts_comclk_gen1 = int_or_default(ci->params, ctx->id("N_FTS_COMCLK_GEN1"), 255);
+        write_int_vector("N_FTS_COMCLK_GEN1[7:0]", n_fts_comclk_gen1, 8);
+
+        auto n_fts_comclk_gen2 = int_or_default(ci->params, ctx->id("N_FTS_COMCLK_GEN2"), 255);
+        write_int_vector("N_FTS_COMCLK_GEN2[7:0]", n_fts_comclk_gen2, 8);
+
+        auto n_fts_gen1 = int_or_default(ci->params, ctx->id("N_FTS_GEN1"), 255);
+        write_int_vector("N_FTS_GEN1[7:0]", n_fts_gen1, 8);
+
+        auto n_fts_gen2 = int_or_default(ci->params, ctx->id("N_FTS_GEN2"), 255);
+        write_int_vector("N_FTS_GEN2[7:0]", n_fts_gen2, 8);
+
+        auto pcie_base_ptr = int_or_default(ci->params, ctx->id("PCIE_BASE_PTR"), 0x60);
+        write_int_vector("PCIE_BASE_PTR[7:0]", pcie_base_ptr, 8);
+
+        auto pcie_cap_capability_id = int_or_default(ci->params, ctx->id("PCIE_CAP_CAPABILITY_ID"), 0x10);
+        write_int_vector("PCIE_CAP_CAPABILITY_ID[7:0]", pcie_cap_capability_id, 8);
+
+        auto pcie_cap_capability_version = int_or_default(ci->params, ctx->id("PCIE_CAP_CAPABILITY_VERSION"), 0x2);
+        write_int_vector("PCIE_CAP_CAPABILITY_VERSION[3:0]", pcie_cap_capability_version, 4);
+
+        auto pcie_cap_device_port_type = int_or_default(ci->params, ctx->id("PCIE_CAP_DEVICE_PORT_TYPE"), 0x0);
+        write_int_vector("PCIE_CAP_DEVICE_PORT_TYPE[3:0]", pcie_cap_device_port_type, 4);
+
+        auto pcie_cap_nextptr = int_or_default(ci->params, ctx->id("PCIE_CAP_NEXTPTR"), 0x9C);
+        write_int_vector("PCIE_CAP_NEXTPTR[7:0]", pcie_cap_nextptr, 8);
+
+        write_str_bool("PCIE_CAP_ON", "TRUE");
+
+        auto pcie_cap_rsvd_15_14 = int_or_default(ci->params, ctx->id("PCIE_CAP_RSVD_15_14"), 0);
+        write_int_vector("PCIE_CAP_RSVD_15_14[1:0]", pcie_cap_rsvd_15_14, 2);
+
+        write_str_bool("PCIE_CAP_SLOT_IMPLEMENTED");
+
+        auto pcie_revision = int_or_default(ci->params, ctx->id("PCIE_REVISION"), 2);
+        write_int_vector("PCIE_REVISION[3:0]", pcie_revision, 4);
+
+        auto pl_auto_config = int_or_default(ci->params, ctx->id("PL_AUTO_CONFIG"), 0);
+        write_int_vector("PL_AUTO_CONFIG[2:0]", pl_auto_config, 3);
+
+        write_str_bool("PL_FAST_TRAIN", "TRUE");
+
+        auto pm_aspml0s_timeout = int_or_default(ci->params, ctx->id("PM_ASPML0S_TIMEOUT"), 0x0);
+        write_int_vector("PM_ASPML0S_TIMEOUT[14:0]", pm_aspml0s_timeout, 15);
+
+        write_str_bool("PM_ASPML0S_TIMEOUT_EN");
+
+        auto pm_aspml0s_timeout_func = int_or_default(ci->params, ctx->id("PM_ASPML0S_TIMEOUT_FUNC"), 0);
+        write_int_vector("PM_ASPML0S_TIMEOUT_FUNC[1:0]", pm_aspml0s_timeout_func, 2);
+
+        write_str_bool("PM_ASPM_FASTEXIT");
+
+        auto pm_base_ptr = int_or_default(ci->params, ctx->id("PM_BASE_PTR"), 0x40);
+        write_int_vector("PM_BASE_PTR[7:0]", pm_base_ptr, 8);
+
+        auto pm_cap_auxcurrent = int_or_default(ci->params, ctx->id("PM_CAP_AUXCURRENT"), 0);
+        write_int_vector("PM_CAP_AUXCURRENT[2:0]", pm_cap_auxcurrent, 3);
+
+        write_str_bool("PM_CAP_D1SUPPORT", "TRUE");
+        write_str_bool("PM_CAP_D2SUPPORT", "TRUE");
+        write_str_bool("PM_CAP_DSI");
+
+        auto pm_cap_id = int_or_default(ci->params, ctx->id("PM_CAP_ID"), 0x1);
+        write_int_vector("PM_CAP_ID[7:0]", pm_cap_id, 8);
+
+        auto pm_cap_nextptr = int_or_default(ci->params, ctx->id("PM_CAP_NEXTPTR"), 0x48);
+        write_int_vector("PM_CAP_NEXTPTR[7:0]", pm_cap_nextptr, 8);
+
+        write_str_bool("PM_CAP_ON", "TRUE");
+
+        auto pm_cap_pmesupport = int_or_default(ci->params, ctx->id("PM_CAP_PMESUPPORT"), 0xF);
+        write_int_vector("PM_CAP_PMESUPPORT[4:0]", pm_cap_pmesupport, 5);
+
+        write_str_bool("PM_CAP_PME_CLOCK");
+
+        auto pm_cap_rsvd_04 = int_or_default(ci->params, ctx->id("PM_CAP_RSVD_04"), 0);
+        write_int_vector("PM_CAP_RSVD_04[15:0]", pm_cap_rsvd_04, 16);
+
+        auto pm_cap_version = int_or_default(ci->params, ctx->id("PM_CAP_VERSION"), 3);
+        write_int_vector("PM_CAP_VERSION[2:0]", pm_cap_version, 3);
+
+        write_str_bool("PM_CSR_B2B3");
+        write_str_bool("PM_CSR_BPCCEN");
+        write_str_bool("PM_CSR_NOSOFTRST", "TRUE");
+
+        auto pm_data0 = int_or_default(ci->params, ctx->id("PM_DATA0"), 0x1);
+        write_int_vector("PM_DATA0[7:0]", pm_data0, 8);
+        auto pm_data1 = int_or_default(ci->params, ctx->id("PM_DATA1"), 0x1);
+        write_int_vector("PM_DATA1[7:0]", pm_data1, 8);
+        auto pm_data2 = int_or_default(ci->params, ctx->id("PM_DATA2"), 0x1);
+        write_int_vector("PM_DATA2[7:0]", pm_data2, 8);
+        auto pm_data3 = int_or_default(ci->params, ctx->id("PM_DATA3"), 0x1);
+        write_int_vector("PM_DATA3[7:0]", pm_data3, 8);
+        auto pm_data4 = int_or_default(ci->params, ctx->id("PM_DATA4"), 0x1);
+        write_int_vector("PM_DATA4[7:0]", pm_data4, 8);
+        auto pm_data5 = int_or_default(ci->params, ctx->id("PM_DATA5"), 0x1);
+        write_int_vector("PM_DATA5[7:0]", pm_data5, 8);
+        auto pm_data6 = int_or_default(ci->params, ctx->id("PM_DATA6"), 0x1);
+        write_int_vector("PM_DATA6[7:0]", pm_data6, 8);
+        auto pm_data7 = int_or_default(ci->params, ctx->id("PM_DATA7"), 0x1);
+        write_int_vector("PM_DATA7[7:0]", pm_data7, 8);
+
+        auto pm_data_scale0 = int_or_default(ci->params, ctx->id("PM_DATA_SCALE0"), 0x1);
+        write_int_vector("PM_DATA_SCALE0[1:0]", pm_data_scale0, 2);
+        auto pm_data_scale1 = int_or_default(ci->params, ctx->id("PM_DATA_SCALE1"), 0x1);
+        write_int_vector("PM_DATA_SCALE1[1:0]", pm_data_scale1, 2);
+        auto pm_data_scale2 = int_or_default(ci->params, ctx->id("PM_DATA_SCALE2"), 0x1);
+        write_int_vector("PM_DATA_SCALE2[1:0]", pm_data_scale2, 2);
+        auto pm_data_scale3 = int_or_default(ci->params, ctx->id("PM_DATA_SCALE3"), 0x1);
+        write_int_vector("PM_DATA_SCALE3[1:0]", pm_data_scale3, 2);
+        auto pm_data_scale4 = int_or_default(ci->params, ctx->id("PM_DATA_SCALE4"), 0x1);
+        write_int_vector("PM_DATA_SCALE4[1:0]", pm_data_scale4, 2);
+        auto pm_data_scale5 = int_or_default(ci->params, ctx->id("PM_DATA_SCALE5"), 0x1);
+        write_int_vector("PM_DATA_SCALE5[1:0]", pm_data_scale5, 2);
+        auto pm_data_scale6 = int_or_default(ci->params, ctx->id("PM_DATA_SCALE6"), 0x1);
+        write_int_vector("PM_DATA_SCALE6[1:0]", pm_data_scale6, 2);
+        auto pm_data_scale7 = int_or_default(ci->params, ctx->id("PM_DATA_SCALE7"), 0x1);
+        write_int_vector("PM_DATA_SCALE7[1:0]", pm_data_scale7, 2);
+
+        write_str_bool("PM_MF");
+
+        auto rbar_base_ptr = int_or_default(ci->params, ctx->id("RBAR_BASE_PTR"), 0x178);
+        write_int_vector("RBAR_BASE_PTR[11:0]", rbar_base_ptr, 12);
+
+        auto rbar_cap_control_encodedbar0 = int_or_default(ci->params, ctx->id("RBAR_CAP_CONTROL_ENCODEDBAR0"), 0x0);
+        write_int_vector("RBAR_CAP_CONTROL_ENCODEDBAR0[4:0]", rbar_cap_control_encodedbar0, 5);
+
+        auto rbar_cap_control_encodedbar1 = int_or_default(ci->params, ctx->id("RBAR_CAP_CONTROL_ENCODEDBAR1"), 0x0);
+        write_int_vector("RBAR_CAP_CONTROL_ENCODEDBAR1[4:0]", rbar_cap_control_encodedbar1, 5);
+
+        auto rbar_cap_control_encodedbar2 = int_or_default(ci->params, ctx->id("RBAR_CAP_CONTROL_ENCODEDBAR2"), 0x0);
+        write_int_vector("RBAR_CAP_CONTROL_ENCODEDBAR2[4:0]", rbar_cap_control_encodedbar2, 5);
+
+        auto rbar_cap_control_encodedbar3 = int_or_default(ci->params, ctx->id("RBAR_CAP_CONTROL_ENCODEDBAR3"), 0x0);
+        write_int_vector("RBAR_CAP_CONTROL_ENCODEDBAR3[4:0]", rbar_cap_control_encodedbar3, 5);
+
+        auto rbar_cap_control_encodedbar4 = int_or_default(ci->params, ctx->id("RBAR_CAP_CONTROL_ENCODEDBAR4"), 0x0);
+        write_int_vector("RBAR_CAP_CONTROL_ENCODEDBAR4[4:0]", rbar_cap_control_encodedbar4, 5);
+
+        auto rbar_cap_control_encodedbar5 = int_or_default(ci->params, ctx->id("RBAR_CAP_CONTROL_ENCODEDBAR5"), 0x0);
+        write_int_vector("RBAR_CAP_CONTROL_ENCODEDBAR5[4:0]", rbar_cap_control_encodedbar5, 5);
+
+        auto rbar_cap_id = int_or_default(ci->params, ctx->id("RBAR_CAP_ID"), 0x15);
+        write_int_vector("RBAR_CAP_ID[15:0]", rbar_cap_id, 16);
+
+        auto rbar_cap_index0 = int_or_default(ci->params, ctx->id("RBAR_CAP_INDEX0"), 0x0);
+        write_int_vector("RBAR_CAP_INDEX0[2:0]", rbar_cap_index0, 3);
+
+        auto rbar_cap_index1 = int_or_default(ci->params, ctx->id("RBAR_CAP_INDEX1"), 0x0);
+        write_int_vector("RBAR_CAP_INDEX1[2:0]", rbar_cap_index1, 3);
+
+        auto rbar_cap_index2 = int_or_default(ci->params, ctx->id("RBAR_CAP_INDEX2"), 0x0);
+        write_int_vector("RBAR_CAP_INDEX2[2:0]", rbar_cap_index2, 3);
+
+        auto rbar_cap_index3 = int_or_default(ci->params, ctx->id("RBAR_CAP_INDEX3"), 0x0);
+        write_int_vector("RBAR_CAP_INDEX3[2:0]", rbar_cap_index3, 3);
+
+        auto rbar_cap_index4 = int_or_default(ci->params, ctx->id("RBAR_CAP_INDEX4"), 0x0);
+        write_int_vector("RBAR_CAP_INDEX4[2:0]", rbar_cap_index4, 3);
+
+        auto rbar_cap_index5 = int_or_default(ci->params, ctx->id("RBAR_CAP_INDEX5"), 0x0);
+        write_int_vector("RBAR_CAP_INDEX5[2:0]", rbar_cap_index5, 3);
+
+        auto rbar_cap_nextptr = int_or_default(ci->params, ctx->id("RBAR_CAP_NEXTPTR"), 0x0);
+        write_int_vector("RBAR_CAP_NEXTPTR[11:0]", rbar_cap_nextptr, 12);
+
+        write_str_bool("RBAR_CAP_ON");
+
+        auto rbar_cap_sup0 = int_or_default(ci->params, ctx->id("RBAR_CAP_SUP0"), 0x0);
+        write_int_vector("RBAR_CAP_SUP0[31:0]", rbar_cap_sup0, 32);
+
+        auto rbar_cap_sup1 = int_or_default(ci->params, ctx->id("RBAR_CAP_SUP1"), 0x0);
+        write_int_vector("RBAR_CAP_SUP1[31:0]", rbar_cap_sup1, 32);
+
+        auto rbar_cap_sup2 = int_or_default(ci->params, ctx->id("RBAR_CAP_SUP2"), 0x0);
+        write_int_vector("RBAR_CAP_SUP2[31:0]", rbar_cap_sup2, 32);
+
+        auto rbar_cap_sup3 = int_or_default(ci->params, ctx->id("RBAR_CAP_SUP3"), 0x0);
+        write_int_vector("RBAR_CAP_SUP3[31:0]", rbar_cap_sup3, 32);
+
+        auto rbar_cap_sup4 = int_or_default(ci->params, ctx->id("RBAR_CAP_SUP4"), 0x0);
+        write_int_vector("RBAR_CAP_SUP4[31:0]", rbar_cap_sup4, 32);
+
+        auto rbar_cap_sup5 = int_or_default(ci->params, ctx->id("RBAR_CAP_SUP5"), 0x0);
+        write_int_vector("RBAR_CAP_SUP5[31:0]", rbar_cap_sup5, 32);
+
+        auto rbar_cap_version = int_or_default(ci->params, ctx->id("RBAR_CAP_VERSION"), 0x1);
+        write_int_vector("RBAR_CAP_VERSION[3:0]", rbar_cap_version, 4);
+
+        auto rbar_num = int_or_default(ci->params, ctx->id("RBAR_NUM"), 0x1);
+        write_int_vector("RBAR_NUM[2:0]", rbar_num, 3);
+
+        auto recrc_chk = int_or_default(ci->params, ctx->id("RECRC_CHK"), 0);
+        write_int_vector("RECRC_CHK[1:0]", recrc_chk, 2);
+
+        write_str_bool("RECRC_CHK_TRIM");
+        write_str_bool("ROOT_CAP_CRS_SW_VISIBILITY");
+
+        auto rp_auto_spd = int_or_default(ci->params, ctx->id("RP_AUTO_SPD"), 0x1);
+        write_int_vector("RP_AUTO_SPD[1:0]", rp_auto_spd, 2);
+
+        auto rp_auto_spd_loopcnt = int_or_default(ci->params, ctx->id("RP_AUTO_SPD_LOOPCNT"), 0x1F);
+        write_int_vector("RP_AUTO_SPD_LOOPCNT[4:0]", rp_auto_spd_loopcnt, 5);
+
+        write_str_bool("SELECT_DLL_IF");
+        write_str_bool("SLOT_CAP_ATT_BUTTON_PRESENT");
+        write_str_bool("SLOT_CAP_ATT_INDICATOR_PRESENT");
+        write_str_bool("SLOT_CAP_ELEC_INTERLOCK_PRESENT");
+        write_str_bool("SLOT_CAP_HOTPLUG_CAPABLE");
+        write_str_bool("SLOT_CAP_HOTPLUG_SURPRISE");
+        write_str_bool("SLOT_CAP_MRL_SENSOR_PRESENT");
+        write_str_bool("SLOT_CAP_NO_CMD_COMPLETED_SUPPORT");
+
+        auto slot_cap_physical_slot_num = int_or_default(ci->params, ctx->id("SLOT_CAP_PHYSICAL_SLOT_NUM"), 0x0);
+        write_int_vector("SLOT_CAP_PHYSICAL_SLOT_NUM[12:0]", slot_cap_physical_slot_num, 13);
+
+        write_str_bool("SLOT_CAP_POWER_CONTROLLER_PRESENT");
+        write_str_bool("SLOT_CAP_POWER_INDICATOR_PRESENT");
+
+        auto slot_cap_slot_power_limit_scale = int_or_default(ci->params, ctx->id("SLOT_CAP_SLOT_POWER_LIMIT_SCALE"), 0);
+        write_int_vector("SLOT_CAP_SLOT_POWER_LIMIT_SCALE[1:0]", slot_cap_slot_power_limit_scale, 2);
+
+        auto slot_cap_slot_power_limit_value = int_or_default(ci->params, ctx->id("SLOT_CAP_SLOT_POWER_LIMIT_VALUE"), 0x0);
+        write_int_vector("SLOT_CAP_SLOT_POWER_LIMIT_VALUE[7:0]", slot_cap_slot_power_limit_value, 8);
+
+        write_str_bool("SSL_MESSAGE_AUTO");
+        write_str_bool("TECRC_EP_INV");
+        write_str_bool("TL_RBYPASS");
+
+        auto tl_rx_ram_raddr_latency = int_or_default(ci->params, ctx->id("TL_RX_RAM_RADDR_LATENCY"), 0);
+        write_int_vector("TL_RX_RAM_RADDR_LATENCY[1:0]", tl_rx_ram_raddr_latency, 2);
+
+        auto tl_rx_ram_rdata_latency = int_or_default(ci->params, ctx->id("TL_RX_RAM_RDATA_LATENCY"), 2);
+        write_int_vector("TL_RX_RAM_RDATA_LATENCY[1:0]", tl_rx_ram_rdata_latency, 2);
+
+        auto tl_rx_ram_write_latency = int_or_default(ci->params, ctx->id("TL_RX_RAM_WRITE_LATENCY"), 0);
+        write_int_vector("TL_RX_RAM_WRITE_LATENCY[4:0]", tl_rx_ram_write_latency, 5);
+
+        write_str_bool("TL_TFC_DISABLE");
+        write_str_bool("TL_TX_CHECKS_DISABLE");
+
+        auto tl_tx_ram_raddr_latency = int_or_default(ci->params, ctx->id("TL_TX_RAM_RADDR_LATENCY"), 0);
+        write_int_vector("TL_TX_RAM_RADDR_LATENCY[13:0]", tl_tx_ram_raddr_latency, 14);
+
+        auto tl_tx_ram_rdata_latency = int_or_default(ci->params, ctx->id("TL_TX_RAM_RDATA_LATENCY"), 2);
+        write_int_vector("TL_TX_RAM_RDATA_LATENCY[1:0]", tl_tx_ram_rdata_latency, 2);
+
+        auto tl_tx_ram_write_latency = int_or_default(ci->params, ctx->id("TL_TX_RAM_WRITE_LATENCY"), 0);
+        write_int_vector("TL_TX_RAM_WRITE_LATENCY[0:0]", tl_tx_ram_write_latency, 1);
+
+        write_str_bool("TRN_DW");
+        write_str_bool("TRN_NP_FC");
+        write_str_bool("UPCONFIG_CAPABLE", "TRUE");
+        write_str_bool("UPSTREAM_FACING", "TRUE");
+        write_str_bool("UR_ATOMIC", "TRUE");
+        write_str_bool("UR_CFG1", "TRUE");
+        write_str_bool("UR_INV_REQ", "TRUE");
+        write_str_bool("UR_PRS_RESPONSE", "TRUE");
+        write_str_bool("USER_CLK2_DIV2");
+
+        auto user_clk_freq = int_or_default(ci->params, ctx->id("USER_CLK_FREQ"), 3);
+        write_int_vector("USER_CLK_FREQ[2:0]", user_clk_freq, 3);
+
+        write_str_bool("USE_RID_PINS");
+        write_str_bool("VC0_CPL_INFINITE", "TRUE");
+
+        auto vc0_rx_ram_limit = int_or_default(ci->params, ctx->id("VC0_RX_RAM_LIMIT"), 0x3FF);
+        write_int_vector("VC0_RX_RAM_LIMIT[12:0]", vc0_rx_ram_limit, 13);
+
+        auto vc0_total_credits_cd = int_or_default(ci->params, ctx->id("VC0_TOTAL_CREDITS_CD"), 127);
+        write_int_vector("VC0_TOTAL_CREDITS_CD[10:0]", vc0_total_credits_cd, 11);
+
+        auto vc0_total_credits_ch = int_or_default(ci->params, ctx->id("VC0_TOTAL_CREDITS_CH"), 31);
+        write_int_vector("VC0_TOTAL_CREDITS_CH[6:0]", vc0_total_credits_ch, 7);
+
+        auto vc0_total_credits_npd = int_or_default(ci->params, ctx->id("VC0_TOTAL_CREDITS_NPD"), 24);
+        write_int_vector("VC0_TOTAL_CREDITS_NPD[10:0]", vc0_total_credits_npd, 11);
+
+        auto vc0_total_credits_nph = int_or_default(ci->params, ctx->id("VC0_TOTAL_CREDITS_NPH"), 12);
+        write_int_vector("VC0_TOTAL_CREDITS_NPH[6:0]", vc0_total_credits_nph, 7);
+
+        auto vc0_total_credits_pd = int_or_default(ci->params, ctx->id("VC0_TOTAL_CREDITS_PD"), 288);
+        write_int_vector("VC0_TOTAL_CREDITS_PD[10:0]", vc0_total_credits_pd, 11);
+
+        auto vc0_total_credits_ph = int_or_default(ci->params, ctx->id("VC0_TOTAL_CREDITS_PH"), 32);
+        write_int_vector("VC0_TOTAL_CREDITS_PH[6:0]", vc0_total_credits_ph, 7);
+
+        auto vc0_tx_lastpacket = int_or_default(ci->params, ctx->id("VC0_TX_LASTPACKET"), 31);
+        write_int_vector("VC0_TX_LASTPACKET[4:0]", vc0_tx_lastpacket, 5);
+
+        auto vc_base_ptr = int_or_default(ci->params, ctx->id("VC_BASE_PTR"), 0x10C);
+        write_int_vector("VC_BASE_PTR[11:0]", vc_base_ptr, 12);
+
+        auto vc_cap_id = int_or_default(ci->params, ctx->id("VC_CAP_ID"), 0x2);
+        write_int_vector("VC_CAP_ID[15:0]", vc_cap_id, 16);
+
+        auto vc_cap_nextptr = int_or_default(ci->params, ctx->id("VC_CAP_NEXTPTR"), 0x0);
+        write_int_vector("VC_CAP_NEXTPTR[11:0]", vc_cap_nextptr, 12);
+
+        write_str_bool("VC_CAP_ON");
+        write_str_bool("VC_CAP_REJECT_SNOOP_TRANSACTIONS");
+
+        auto vc_cap_version = int_or_default(ci->params, ctx->id("VC_CAP_VERSION"), 0x1);
+        write_int_vector("VC_CAP_VERSION[3:0]", vc_cap_version, 4);
+
+        auto vsec_base_ptr = int_or_default(ci->params, ctx->id("VSEC_BASE_PTR"), 0x128);
+        write_int_vector("VSEC_BASE_PTR[11:0]", vsec_base_ptr, 12);
+
+        auto vsec_cap_hdr_id = int_or_default(ci->params, ctx->id("VSEC_CAP_HDR_ID"), 0x1234);
+        write_int_vector("VSEC_CAP_HDR_ID[15:0]", vsec_cap_hdr_id, 16);
+
+        auto vsec_cap_hdr_length = int_or_default(ci->params, ctx->id("VSEC_CAP_HDR_LENGTH"), 0x18);
+        write_int_vector("VSEC_CAP_HDR_LENGTH[11:0]", vsec_cap_hdr_length, 12);
+
+        auto vsec_cap_hdr_revision = int_or_default(ci->params, ctx->id("VSEC_CAP_HDR_REVISION"), 0x1);
+        write_int_vector("VSEC_CAP_HDR_REVISION[3:0]", vsec_cap_hdr_revision, 4);
+
+        auto vsec_cap_id = int_or_default(ci->params, ctx->id("VSEC_CAP_ID"), 0xB);
+        write_int_vector("VSEC_CAP_ID[15:0]", vsec_cap_id, 16);
+
+        write_str_bool("VSEC_CAP_IS_LINK_VISIBLE", "TRUE");
+
+        auto vsec_cap_nextptr = int_or_default(ci->params, ctx->id("VSEC_CAP_NEXTPTR"), 0x140);
+        write_int_vector("VSEC_CAP_NEXTPTR[11:0]", vsec_cap_nextptr, 12);
+
+        write_str_bool("VSEC_CAP_ON");
+
+        auto vsec_cap_version = int_or_default(ci->params, ctx->id("VSEC_CAP_VERSION"), 0x1);
+        write_int_vector("VSEC_CAP_VERSION[3:0]", vsec_cap_version, 4);
+
+        write_str_bool("ENABLE_JTAG_DBG");
+
+        pop(); // PCIE_2_1
         pop(); // tile name
     }
 
@@ -2848,6 +3492,11 @@ struct FasmBackend
             }
             if (ci->type == id_GTPE2_CHANNEL) {
                 write_gtp_channel(ci);
+                blank();
+                continue;
+            }
+            if (ci->type == id_PCIE_2_1_PCIE_2_1) {
+                write_pcie_2_1(ci);
                 blank();
                 continue;
             }

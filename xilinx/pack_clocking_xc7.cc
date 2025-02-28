@@ -115,6 +115,8 @@ void XC7Packer::pack_gbs()
         CellInfo *ci = cell.second;
         if (ci->type == ctx->id("PS7_PS7"))
             preplace_unique(ci);
+        if (ci->type == ctx->id("PCIE_2_1_PCIE_2_1"))
+            preplace_unique(ci);
     }
 
     // Preplace global buffers to make use of dedicated/short routing
